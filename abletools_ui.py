@@ -1932,7 +1932,7 @@ class AbletoolsUI(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.title("Abletools")
-        self.geometry("1080x720")
+        self.geometry("1512x1008")
         self.configure(bg=BG)
 
         self.abletools_dir = ABLETOOLS_DIR
@@ -1940,6 +1940,7 @@ class AbletoolsUI(tk.Tk):
         self.current_scope = "live_recordings"
         self.log_path: Optional[Path] = None
         self.logger = self._setup_logging()
+        self._db_refresh_lock = threading.Lock()
 
         self._nav_buttons: dict[str, tk.Button] = {}
         self._views: dict[str, tk.Frame] = {}
@@ -2392,30 +2393,36 @@ class AbletoolsUI(tk.Tk):
             messagebox.showwarning("Could not open folder", str(folder))
 
     def refresh_catalog_db(self) -> None:
-        catalog_dir = self.catalog_dir()
-        db_script = self.abletools_dir / "abletools_catalog_db.py"
-        if not db_script.exists():
-            messagebox.showerror("Catalog", "Database script not found.")
-            self._log_event("ERROR", "refresh_catalog_db: script missing")
+        if not self._db_refresh_lock.acquire(blocking=False):
+            self._log_event("DB", "refresh_catalog_db skipped: already running")
             return
-        catalog_dir.mkdir(parents=True, exist_ok=True)
-        self._log_event("DB", f"refresh_catalog_db: {catalog_dir}")
         try:
-            proc = subprocess.run(
-                [sys.executable, str(db_script), str(catalog_dir), "--append"],
-                cwd=str(self.abletools_dir),
-                capture_output=True,
-                text=True,
-            )
-        except Exception as exc:
-            messagebox.showerror("Catalog", f"Failed to update DB:\n{exc}")
-            self._log_event("ERROR", f"refresh_catalog_db: {exc}")
-            return
-        if proc.returncode != 0:
-            messagebox.showerror(
-                "Catalog", proc.stderr.strip() or "Database update failed."
-            )
-            self._log_event("ERROR", f"refresh_catalog_db: {proc.stderr.strip()}")
+            catalog_dir = self.catalog_dir()
+            db_script = self.abletools_dir / "abletools_catalog_db.py"
+            if not db_script.exists():
+                messagebox.showerror("Catalog", "Database script not found.")
+                self._log_event("ERROR", "refresh_catalog_db: script missing")
+                return
+            catalog_dir.mkdir(parents=True, exist_ok=True)
+            self._log_event("DB", f"refresh_catalog_db: {catalog_dir}")
+            try:
+                proc = subprocess.run(
+                    [sys.executable, str(db_script), str(catalog_dir), "--append"],
+                    cwd=str(self.abletools_dir),
+                    capture_output=True,
+                    text=True,
+                )
+            except Exception as exc:
+                messagebox.showerror("Catalog", f"Failed to update DB:\n{exc}")
+                self._log_event("ERROR", f"refresh_catalog_db: {exc}")
+                return
+            if proc.returncode != 0:
+                messagebox.showerror(
+                    "Catalog", proc.stderr.strip() or "Database update failed."
+                )
+                self._log_event("ERROR", f"refresh_catalog_db: {proc.stderr.strip()}")
+        finally:
+            self._db_refresh_lock.release()
 
     def run_analytics(self) -> None:
         db_path = self.resolve_catalog_db_path()
