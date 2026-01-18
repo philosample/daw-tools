@@ -67,6 +67,9 @@ python abletools_catalog_db.py ./.abletools_catalog --prefs-only
 
 # Compute analytics (device usage, FX chain templates)
 python abletools_analytics.py ./.abletools_catalog/abletools_catalog.sqlite
+
+# Maintenance (ANALYZE + PRAGMA optimize)
+python abletools_maintenance.py ./.abletools_catalog/abletools_catalog.sqlite --analyze --optimize
 ```
 
 ## Project Layout

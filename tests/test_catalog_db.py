@@ -31,3 +31,24 @@ def test_device_sequence_table_exists() -> None:
         assert "device_name" in cols
     finally:
         conn.close()
+
+
+def test_analytics_tables_exist() -> None:
+    conn = sqlite3.connect(":memory:")
+    try:
+        create_schema(conn)
+        assert "catalog_docs" in {row[0] for row in conn.execute("SELECT name FROM sqlite_master")}
+        assert "device_cooccurrence" in {
+            row[0] for row in conn.execute("SELECT name FROM sqlite_master")
+        }
+        assert "doc_complexity" in {
+            row[0] for row in conn.execute("SELECT name FROM sqlite_master")
+        }
+        assert "library_growth" in {
+            row[0] for row in conn.execute("SELECT name FROM sqlite_master")
+        }
+        assert "missing_refs_by_path" in {
+            row[0] for row in conn.execute("SELECT name FROM sqlite_master")
+        }
+    finally:
+        conn.close()

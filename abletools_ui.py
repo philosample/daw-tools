@@ -259,13 +259,12 @@ class DashboardPanel(tk.Frame):
 
         analytics = tk.Frame(self, bg=BG)
         analytics.pack(fill="x", padx=16, pady=(0, 16))
-        analytics.columnconfigure((0, 1), weight=1)
+        analytics.columnconfigure((0, 1, 2), weight=1)
 
-        self.top_devices_text = self._make_analytics_box(
-            analytics, "Top Devices", 0
-        )
-        self.top_chains_text = self._make_analytics_box(
-            analytics, "Top FX Chains", 1
+        self.top_devices_text = self._make_analytics_box(analytics, "Top Devices", 0)
+        self.top_chains_text = self._make_analytics_box(analytics, "Top FX Chains", 1)
+        self.missing_paths_text = self._make_analytics_box(
+            analytics, "Missing Refs Paths", 2
         )
 
     def _make_analytics_box(self, master: tk.Frame, title: str, col: int) -> tk.Text:
@@ -324,6 +323,7 @@ class DashboardPanel(tk.Frame):
 
         devices = self.app.load_top_devices()
         chains = self.app.load_top_chains()
+        missing_paths = self.app.load_missing_refs_paths()
         self.top_devices_text.configure(state="normal")
         self.top_devices_text.delete("1.0", "end")
         self.top_devices_text.insert("end", "\n".join(devices) if devices else "No data yet.")
@@ -333,6 +333,13 @@ class DashboardPanel(tk.Frame):
         self.top_chains_text.delete("1.0", "end")
         self.top_chains_text.insert("end", "\n".join(chains) if chains else "No data yet.")
         self.top_chains_text.configure(state="disabled")
+
+        self.missing_paths_text.configure(state="normal")
+        self.missing_paths_text.delete("1.0", "end")
+        self.missing_paths_text.insert(
+            "end", "\n".join(missing_paths) if missing_paths else "No data yet."
+        )
+        self.missing_paths_text.configure(state="disabled")
 
 
 class CatalogPanel(tk.Frame):
@@ -524,66 +531,37 @@ class CatalogPanel(tk.Frame):
 
         term = self.search_var.get().strip()
         scope = self.scope_var.get()
-        clauses = ["error IS NULL"]
+        clauses = []
         params = []
         if term:
             clauses.append("path LIKE ?")
             params.append(f"%{term}%")
         if self.filter_missing.get():
-            clauses.append("path IN (SELECT src FROM {refs_table} WHERE ref_exists = 0)")
+            clauses.append("missing_refs = 1")
         if self.filter_devices.get():
-            clauses.append("path IN (SELECT doc_path FROM {hints_table})")
+            clauses.append("has_devices = 1")
         if self.filter_samples.get():
-            clauses.append("path IN (SELECT doc_path FROM {samples_table})")
+            clauses.append("has_samples = 1")
 
         where_sql = " AND ".join(clauses) if clauses else "1=1"
 
-        def scoped_sql(suffix: str, scope_label: str) -> str:
-            where = where_sql.format(
-                refs_table=f"refs_graph{suffix}",
-                hints_table=f"doc_device_hints{suffix}",
-                samples_table=f"doc_sample_refs{suffix}",
-            )
-            return (
-                "SELECT d.path, f.ext, f.size, f.mtime, "
-                "d.tracks_total, d.clips_total, "
-                f"EXISTS(SELECT 1 FROM doc_device_hints{suffix} dh WHERE dh.doc_path = d.path) AS has_devices, "
-                f"EXISTS(SELECT 1 FROM doc_sample_refs{suffix} ds WHERE ds.doc_path = d.path) AS has_samples, "
-                f"EXISTS(SELECT 1 FROM refs_graph{suffix} rg WHERE rg.src = d.path AND rg.ref_exists = 0) AS missing_refs, "
-                f"'{scope_label}' AS scope "
-                f"FROM ableton_docs{suffix} d "
-                f"LEFT JOIN file_index{suffix} f ON f.path = d.path "
-                f"WHERE {where}"
-            )
-
         if scope == "all":
             sql = (
-                scoped_sql("", "live_recordings")
-                + " UNION ALL "
-                + scoped_sql("_user_library", "user_library")
-                + " UNION ALL "
-                + scoped_sql("_preferences", "preferences")
-                + " ORDER BY scanned_at DESC LIMIT 500"
+                "SELECT path, ext, size, mtime, tracks_total, clips_total, "
+                "has_devices, has_samples, missing_refs, scope "
+                "FROM catalog_docs "
+                f"WHERE {where_sql} "
+                "ORDER BY scanned_at DESC LIMIT 500"
             )
         else:
-            suffix = "" if scope == "live_recordings" else f"_{scope}"
-            where = where_sql.format(
-                refs_table=f"refs_graph{suffix}",
-                hints_table=f"doc_device_hints{suffix}",
-                samples_table=f"doc_sample_refs{suffix}",
-            )
             sql = (
-                "SELECT d.path, f.ext, f.size, f.mtime, "
-                "d.tracks_total, d.clips_total, "
-                f"EXISTS(SELECT 1 FROM doc_device_hints{suffix} dh WHERE dh.doc_path = d.path) AS has_devices, "
-                f"EXISTS(SELECT 1 FROM doc_sample_refs{suffix} ds WHERE ds.doc_path = d.path) AS has_samples, "
-                f"EXISTS(SELECT 1 FROM refs_graph{suffix} rg WHERE rg.src = d.path AND rg.ref_exists = 0) AS missing_refs, "
-                f"'{scope}' AS scope "
-                f"FROM ableton_docs{suffix} d "
-                f"LEFT JOIN file_index{suffix} f ON f.path = d.path "
-                f"WHERE {where} "
-                "ORDER BY d.scanned_at DESC LIMIT 500"
+                "SELECT path, ext, size, mtime, tracks_total, clips_total, "
+                "has_devices, has_samples, missing_refs, scope "
+                "FROM catalog_docs "
+                f"WHERE scope = ? AND {where_sql} "
+                "ORDER BY scanned_at DESC LIMIT 500"
             )
+            params = [scope, *params]
         try:
             with sqlite3.connect(db_path) as conn:
                 for row in conn.execute(sql, params):
@@ -632,11 +610,17 @@ class CatalogPanel(tk.Frame):
                 doc = conn.execute(
                     f"SELECT * FROM ableton_docs{suffix} WHERE path = ?", (path,)
                 ).fetchone()
-                file_row = conn.execute(
-                    f"SELECT ext, size, mtime, audio_duration, audio_sample_rate, audio_channels "
-                    f"FROM file_index{suffix} WHERE path = ?",
-                    (path,),
-                ).fetchone()
+                try:
+                    file_row = conn.execute(
+                        f"SELECT ext, size, mtime, audio_duration, audio_sample_rate, audio_channels "
+                        f"FROM file_index{suffix} WHERE path = ?",
+                        (path,),
+                    ).fetchone()
+                except sqlite3.OperationalError:
+                    file_row = conn.execute(
+                        f"SELECT ext, size, mtime FROM file_index{suffix} WHERE path = ?",
+                        (path,),
+                    ).fetchone()
                 samples = conn.execute(
                     f"SELECT COUNT(*) FROM doc_sample_refs{suffix} WHERE doc_path = ?",
                     (path,),
@@ -657,6 +641,14 @@ class CatalogPanel(tk.Frame):
             self._set_detail("Document not found in database.")
             return
 
+        audio_duration = ""
+        audio_rate = ""
+        audio_channels = ""
+        if file_row and "audio_duration" in file_row.keys():
+            audio_duration = file_row["audio_duration"] or ""
+            audio_rate = file_row["audio_sample_rate"] or ""
+            audio_channels = file_row["audio_channels"] or ""
+
         lines = [
             f"Path: {doc['path']}",
             f"Ext: {file_row['ext'] if file_row else ''}",
@@ -668,9 +660,9 @@ class CatalogPanel(tk.Frame):
             f"Devices: {devices}",
             f"Missing refs: {missing}",
             f"Tempo: {doc['tempo']}",
-            f"Audio duration: {file_row['audio_duration'] if file_row else ''}",
-            f"Audio rate: {file_row['audio_sample_rate'] if file_row else ''}",
-            f"Audio channels: {file_row['audio_channels'] if file_row else ''}",
+            f"Audio duration: {audio_duration}",
+            f"Audio rate: {audio_rate}",
+            f"Audio channels: {audio_channels}",
             f"Scanned at: {doc['scanned_at']}",
         ]
         self._set_detail("\n".join(lines))
@@ -827,6 +819,7 @@ class ScanPanel(ttk.LabelFrame):
             if width > 0 and height > 0:
                 self.log_bg.place_centered(width, height)
             self.log_bg.start()
+            self._raise_log_lines()
 
     def _browse(self) -> None:
         p = filedialog.askdirectory(
@@ -867,9 +860,13 @@ class ScanPanel(ttk.LabelFrame):
         self.log_canvas.configure(scrollregion=(0, 0, 0, self._log_y + 20))
         self.log_canvas.yview_moveto(1.0)
 
+    def _raise_log_lines(self) -> None:
+        self.log_canvas.tag_raise("log_line")
+
     def _on_log_resize(self, event: tk.Event) -> None:
         self._log_width = event.width
         self.log_bg.place_centered(event.width, event.height)
+        self._raise_log_lines()
 
     def _init_log_bg(self) -> None:
         if not self.log_visible.get():
@@ -879,6 +876,7 @@ class ScanPanel(ttk.LabelFrame):
         if width > 0 and height > 0:
             self.log_bg.place_centered(width, height)
             self.log_bg.start()
+            self._raise_log_lines()
 
     def _enqueue(self, s: str) -> None:
         self._q.put(s)
@@ -1330,8 +1328,9 @@ class RamifyPanel(tk.Frame):
 
 
 class SettingsPanel(tk.Frame):
-    def __init__(self, master: tk.Misc) -> None:
+    def __init__(self, master: tk.Misc, app: "AbletoolsUI") -> None:
         super().__init__(master, bg=BG)
+        self.app = app
         header = tk.Frame(self, bg=BG)
         header.pack(fill="x", padx=16, pady=(16, 8))
         tk.Label(header, text="Settings", font=TITLE_FONT, fg=TEXT, bg=BG).pack(
@@ -1340,13 +1339,38 @@ class SettingsPanel(tk.Frame):
 
         card = tk.Frame(self, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
         card.pack(fill="both", expand=True, padx=16, pady=(0, 16))
+
         tk.Label(
             card,
-            text="Room to grow: theme, database, and tool settings live here.",
+            text="Maintenance",
+            font=H2_FONT,
+            fg=TEXT,
+            bg=PANEL,
+        ).pack(anchor="w", padx=16, pady=(16, 8))
+
+        btns = tk.Frame(card, bg=PANEL)
+        btns.pack(anchor="w", padx=16, pady=(0, 16))
+        ttk.Button(
+            btns,
+            text="Run Analytics",
+            style="Accent.TButton",
+            command=self.app.run_analytics,
+        ).pack(side="left")
+        ttk.Button(
+            btns,
+            text="Optimize DB",
+            style="Ghost.TButton",
+            command=self.app.run_maintenance,
+        ).pack(side="left", padx=(8, 0))
+
+        self.status_var = tk.StringVar(value="")
+        tk.Label(
+            card,
+            textvariable=self.status_var,
             font=BODY_FONT,
             fg=MUTED,
             bg=PANEL,
-        ).pack(anchor="w", padx=16, pady=16)
+        ).pack(anchor="w", padx=16, pady=(0, 16))
 
 
 class PreferencesPanel(tk.Frame):
@@ -1700,7 +1724,7 @@ class AbletoolsUI(tk.Tk):
         self._views["catalog"] = CatalogPanel(content, self)
         self._views["tools"] = RamifyPanel(content)
         self._views["preferences"] = PreferencesPanel(content, self)
-        self._views["settings"] = SettingsPanel(content)
+        self._views["settings"] = SettingsPanel(content, self)
 
         for view in self._views.values():
             view.grid(row=0, column=0, sticky="nsew")
@@ -1977,7 +2001,7 @@ class AbletoolsUI(tk.Tk):
                     "ORDER BY usage_count DESC LIMIT ?",
                     (limit,),
                 ).fetchall()
-            return [f\"{name} ({count})\" for name, count in rows]
+            return [f"{name} ({count})" for name, count in rows]
         except Exception:
             return []
 
@@ -1993,7 +2017,23 @@ class AbletoolsUI(tk.Tk):
                     "ORDER BY usage_count DESC LIMIT ?",
                     (limit,),
                 ).fetchall()
-            return [f\"{chain} ({count})\" for chain, count in rows]
+            return [f"{chain} ({count})" for chain, count in rows]
+        except Exception:
+            return []
+
+    def load_missing_refs_paths(self, limit: int = 6) -> list[str]:
+        db_path = self.resolve_catalog_db_path()
+        if not db_path or not db_path.exists():
+            return []
+        try:
+            with sqlite3.connect(db_path) as conn:
+                rows = conn.execute(
+                    "SELECT ref_parent, missing_count FROM missing_refs_by_path "
+                    "WHERE scope != 'preferences' "
+                    "ORDER BY missing_count DESC LIMIT ?",
+                    (limit,),
+                ).fetchall()
+            return [f"{path} ({count})" for path, count in rows]
         except Exception:
             return []
 
@@ -2007,6 +2047,55 @@ class AbletoolsUI(tk.Tk):
             self.tk.call("exec", "open", str(folder))
         except Exception:
             messagebox.showwarning("Could not open folder", str(folder))
+
+    def run_analytics(self) -> None:
+        db_path = self.resolve_catalog_db_path()
+        if not db_path or not db_path.exists():
+            messagebox.showinfo("Analytics", "No database found yet.")
+            return
+        analytics = self.abletools_dir / "abletools_analytics.py"
+        if not analytics.exists():
+            messagebox.showerror("Analytics", f"Missing analytics script:\n{analytics}")
+            return
+        try:
+            proc = subprocess.run(
+                [sys.executable, str(analytics), str(db_path)],
+                cwd=str(self.abletools_dir),
+                capture_output=True,
+                text=True,
+            )
+        except Exception as exc:
+            messagebox.showerror("Analytics", f"Failed to run analytics:\n{exc}")
+            return
+        if proc.returncode != 0:
+            messagebox.showerror("Analytics", proc.stderr.strip() or "Analytics failed.")
+            return
+        messagebox.showinfo("Analytics", "Analytics updated.")
+        self.refresh_dashboard()
+
+    def run_maintenance(self) -> None:
+        db_path = self.resolve_catalog_db_path()
+        if not db_path or not db_path.exists():
+            messagebox.showinfo("Maintenance", "No database found yet.")
+            return
+        maintenance = self.abletools_dir / "abletools_maintenance.py"
+        if not maintenance.exists():
+            messagebox.showerror("Maintenance", f"Missing maintenance script:\n{maintenance}")
+            return
+        try:
+            proc = subprocess.run(
+                [sys.executable, str(maintenance), str(db_path), "--analyze", "--optimize"],
+                cwd=str(self.abletools_dir),
+                capture_output=True,
+                text=True,
+            )
+        except Exception as exc:
+            messagebox.showerror("Maintenance", f"Failed to run maintenance:\n{exc}")
+            return
+        if proc.returncode != 0:
+            messagebox.showerror("Maintenance", proc.stderr.strip() or "Maintenance failed.")
+            return
+        messagebox.showinfo("Maintenance", "Database optimized.")
 
     def _refresh_prefs_cache(self) -> None:
         catalog_dir = self.abletools_dir / ".abletools_catalog"

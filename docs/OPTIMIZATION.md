@@ -2,8 +2,11 @@
 
 ## Implemented (Baseline)
 - Scandir-based traversal to reduce stat overhead.
+- Directory mtime cache to skip unchanged subtrees during incremental scans.
 - MIME lookup cache by extension.
 - Batch inserts via `executemany` and WAL mode during ingestion.
+- Per-scope transactions with memory temp store and larger SQLite cache size.
+- Materialized `catalog_docs` for faster UI queries.
 
 ## Scanning Performance
 - Use `os.scandir` everywhere for faster stat calls.

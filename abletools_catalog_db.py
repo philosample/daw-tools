@@ -215,6 +215,21 @@ def create_schema(conn: sqlite3.Connection) -> None:
             PRIMARY KEY (scope, path)
         );
 
+        CREATE TABLE IF NOT EXISTS catalog_docs (
+            scope TEXT NOT NULL,
+            path TEXT NOT NULL,
+            ext TEXT,
+            size INTEGER,
+            mtime INTEGER,
+            tracks_total INTEGER,
+            clips_total INTEGER,
+            has_devices INTEGER,
+            has_samples INTEGER,
+            missing_refs INTEGER,
+            scanned_at INTEGER NOT NULL,
+            PRIMARY KEY (scope, path)
+        );
+
         CREATE TABLE IF NOT EXISTS device_usage (
             scope TEXT NOT NULL,
             device_name TEXT NOT NULL,
@@ -231,6 +246,52 @@ def create_schema(conn: sqlite3.Connection) -> None:
             computed_at INTEGER NOT NULL,
             PRIMARY KEY (scope, chain)
         );
+
+        CREATE TABLE IF NOT EXISTS device_cooccurrence (
+            scope TEXT NOT NULL,
+            device_a TEXT NOT NULL,
+            device_b TEXT NOT NULL,
+            usage_count INTEGER NOT NULL,
+            computed_at INTEGER NOT NULL,
+            PRIMARY KEY (scope, device_a, device_b)
+        );
+
+        CREATE TABLE IF NOT EXISTS doc_complexity (
+            scope TEXT NOT NULL,
+            path TEXT NOT NULL,
+            tracks_total INTEGER,
+            clips_total INTEGER,
+            devices_count INTEGER,
+            samples_count INTEGER,
+            missing_refs_count INTEGER,
+            computed_at INTEGER NOT NULL,
+            PRIMARY KEY (scope, path)
+        );
+
+        CREATE TABLE IF NOT EXISTS library_growth (
+            scope TEXT NOT NULL,
+            snapshot_at INTEGER NOT NULL,
+            file_count INTEGER NOT NULL,
+            total_bytes INTEGER NOT NULL,
+            media_bytes INTEGER NOT NULL,
+            doc_count INTEGER NOT NULL,
+            PRIMARY KEY (scope, snapshot_at)
+        );
+
+        CREATE TABLE IF NOT EXISTS missing_refs_by_path (
+            scope TEXT NOT NULL,
+            ref_parent TEXT NOT NULL,
+            missing_count INTEGER NOT NULL,
+            computed_at INTEGER NOT NULL,
+            PRIMARY KEY (scope, ref_parent)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_catalog_docs_scope ON catalog_docs(scope);
+        CREATE INDEX IF NOT EXISTS idx_catalog_docs_missing ON catalog_docs(missing_refs);
+        CREATE INDEX IF NOT EXISTS idx_catalog_docs_devices ON catalog_docs(has_devices);
+        CREATE INDEX IF NOT EXISTS idx_catalog_docs_samples ON catalog_docs(has_samples);
+        CREATE INDEX IF NOT EXISTS idx_device_cooccurrence_count ON device_cooccurrence(usage_count);
+        CREATE INDEX IF NOT EXISTS idx_library_growth_scope ON library_growth(scope);
         """
     )
 
@@ -597,6 +658,33 @@ def load_audio_analysis(
     )
 
 
+def refresh_catalog_docs(conn: sqlite3.Connection, scope: str) -> None:
+    suffix = scope_suffix(scope)
+    conn.execute("DELETE FROM catalog_docs WHERE scope = ?", (scope,))
+    conn.execute(
+        f"""
+        INSERT OR REPLACE INTO catalog_docs
+            (scope, path, ext, size, mtime, tracks_total, clips_total,
+             has_devices, has_samples, missing_refs, scanned_at)
+        SELECT
+            ?,
+            d.path,
+            f.ext,
+            f.size,
+            f.mtime,
+            d.tracks_total,
+            d.clips_total,
+            EXISTS(SELECT 1 FROM doc_device_hints{suffix} dh WHERE dh.doc_path = d.path),
+            EXISTS(SELECT 1 FROM doc_sample_refs{suffix} ds WHERE ds.doc_path = d.path),
+            EXISTS(SELECT 1 FROM refs_graph{suffix} rg WHERE rg.src = d.path AND rg.ref_exists = 0),
+            d.scanned_at
+        FROM ableton_docs{suffix} d
+        LEFT JOIN file_index{suffix} f ON f.path = d.path
+        """,
+        (scope,),
+    )
+
+
 def load_ableton_prefs(conn: sqlite3.Connection, cache_dir: Path) -> None:
     payloads = load_prefs_payloads(cache_dir)
     for entry in payloads:
@@ -650,32 +738,43 @@ def migrate_catalog(catalog: CatalogPaths, db_path: Path, incremental: bool) -> 
     conn = sqlite3.connect(db_path)
     try:
         conn.execute("PRAGMA foreign_keys=ON")
+        conn.execute("PRAGMA temp_store=MEMORY")
+        conn.execute("PRAGMA cache_size=-200000")
         create_schema(conn)
-        with conn:
-            for scope in SCOPES:
-                suffix = scope_suffix(scope)
-                file_index_table = scoped_name("file_index", scope)
-                docs_table = scoped_name("ableton_docs", scope)
-                refs_table = scoped_name("refs_graph", scope)
-                scan_state_table = scoped_name("scan_state", scope)
+        for scope in SCOPES:
+            suffix = scope_suffix(scope)
+            file_index_table = scoped_name("file_index", scope)
+            docs_table = scoped_name("ableton_docs", scope)
+            refs_table = scoped_name("refs_graph", scope)
+            scan_state_table = scoped_name("scan_state", scope)
 
-                ensure_file_index_columns(conn, file_index_table)
-                ensure_ableton_docs_columns(conn, docs_table)
-                ensure_column(conn, refs_table, "ref_exists", "ref_exists INTEGER")
-                ensure_column(conn, scan_state_table, "ctime", "ctime INTEGER")
+            ensure_file_index_columns(conn, file_index_table)
+            ensure_ableton_docs_columns(conn, docs_table)
+            ensure_column(conn, refs_table, "ref_exists", "ref_exists INTEGER")
+            ensure_column(conn, scan_state_table, "ctime", "ctime INTEGER")
 
-                file_index_path = catalog.root / f"file_index{suffix}.jsonl"
-                docs_path = catalog.root / f"ableton_docs{suffix}.jsonl"
-                refs_path = catalog.root / f"refs_graph{suffix}.jsonl"
-                scan_state_path = catalog.root / f"scan_state{suffix}.json"
+            file_index_path = catalog.root / f"file_index{suffix}.jsonl"
+            docs_path = catalog.root / f"ableton_docs{suffix}.jsonl"
+            refs_path = catalog.root / f"refs_graph{suffix}.jsonl"
+            scan_state_path = catalog.root / f"scan_state{suffix}.json"
 
+            conn.execute("BEGIN")
+            try:
                 load_file_index(conn, file_index_path, incremental, file_index_table)
                 load_ableton_docs(conn, docs_path, incremental, docs_table)
                 load_refs_graph(conn, refs_path, incremental, refs_table)
                 load_scan_state(conn, scan_state_path, scan_state_table)
                 load_audio_analysis(conn, file_index_table, scope)
+                refresh_catalog_docs(conn, scope)
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
+            else:
+                conn.execute("COMMIT")
+        with conn:
             load_ableton_prefs(conn, catalog.root)
             load_plugin_index(conn, catalog.root)
+            conn.execute("PRAGMA optimize")
     finally:
         conn.close()
 

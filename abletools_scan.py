@@ -12,7 +12,10 @@ import re
 import sys
 import time
 import wave
-import aifc
+try:
+    import aifc  # Python < 3.13
+except ModuleNotFoundError:  # pragma: no cover - optional in newer Pythons
+    aifc = None
 from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime
@@ -103,6 +106,7 @@ def write_scan_summary(
     top_dirs: Counter[str],
     scope: str,
     all_files: bool,
+    skipped_dirs: int,
 ) -> Path:
     summary_name = "scan_summary.json" if scope == "live_recordings" else f"scan_summary_{scope}.json"
     out = out_dir / summary_name
@@ -118,6 +122,7 @@ def write_scan_summary(
         "files_indexed": int(indexed),
         "ableton_docs_parsed": int(parsed_docs),
         "files_skipped": int(skipped),
+        "dirs_skipped": int(skipped_dirs),
         "all_files": bool(all_files),
         "ableton_sets": int(ableton_sets),
         "by_ext": {k: int(v) for k, v in by_ext.most_common()},
@@ -193,11 +198,27 @@ def classify(ext: str) -> str:
     return "other"
 
 
-def iter_files(root: Path) -> Iterable[os.DirEntry]:
+def iter_files(
+    root: Path,
+    dir_state: dict[str, int],
+    dir_updates: dict[str, int],
+    incremental: bool,
+    skipped_dirs: list[int],
+) -> Iterable[os.DirEntry]:
     stack = [root]
     while stack:
         current = stack.pop()
         try:
+            if incremental and current != root:
+                try:
+                    dir_mtime = int(current.stat().st_mtime)
+                except OSError:
+                    continue
+                prev_mtime = dir_state.get(str(current))
+                if prev_mtime is not None and prev_mtime == dir_mtime:
+                    skipped_dirs[0] += 1
+                    continue
+                dir_updates[str(current)] = dir_mtime
             with os.scandir(current) as it:
                 for entry in it:
                     if entry.name in SKIP_DIRS:
@@ -313,7 +334,7 @@ def analyze_audio(path: Path, ext: str) -> dict:
                         "audio_bit_depth": wf.getsampwidth() * 8,
                     }
                 )
-        elif ext in {".aif", ".aiff"}:
+        elif ext in {".aif", ".aiff"} and aifc is not None:
             with aifc.open(str(path), "rb") as af:
                 info.update(
                     {
@@ -394,8 +415,12 @@ def main(argv: list[str]) -> int:
     docs_path = out_dir / f"ableton_docs{suffix}.jsonl"
     refs_path = out_dir / f"refs_graph{suffix}.jsonl"
     state_path = out_dir / f"scan_state{suffix}.json"
+    dir_state_path = out_dir / f"dir_state{suffix}.json"
 
     state = load_state(state_path)
+    dir_state = load_state(dir_state_path)
+    dir_updates: dict[str, int] = {}
+    skipped_dirs = [0]
 
     all_files = not args.only_known
     wanted_exts = set(DEFAULT_INDEX_EXTS)
@@ -414,7 +439,7 @@ def main(argv: list[str]) -> int:
     refs_total = 0
     refs_missing = 0
 
-    for entry in iter_files(root):
+    for entry in iter_files(root, dir_state, dir_updates, args.incremental, skipped_dirs):
         scanned += 1
         p = Path(entry.path)
         ext = p.suffix.lower()
@@ -583,6 +608,9 @@ def main(argv: list[str]) -> int:
             )
 
     save_state(state_path, state)
+    if dir_updates:
+        dir_state.update(dir_updates)
+        save_state(dir_state_path, dir_state)
 
     finished = now_ts()
 
@@ -604,6 +632,7 @@ def main(argv: list[str]) -> int:
             top_dirs=top_dirs,
             scope=scope,
             all_files=all_files,
+            skipped_dirs=skipped_dirs[0],
         )
     except Exception as e:
         # Don't fail the scan if summary writing fails

@@ -4,6 +4,7 @@
 - Normalize scan output across all scopes.
 - Add fixture-based tests for scan + db migrations.
 - Improve prefs parsing and stable root detection.
+- Add scan progress indicators (percentage or path-based activity updates).
 
 ## Phase 2: Catalog Depth
 - ALS parsing expansion (tracks/devices/clips).
@@ -19,4 +20,3 @@
 - Batch relabeling in Ableton browser (if automatable).
 - Automatic cleanup suggestions.
 - Template library analytics.
-
