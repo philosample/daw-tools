@@ -412,6 +412,18 @@ class CatalogPanel(tk.Frame):
             command=self._open_full_table,
             style="Ghost.TButton",
         ).pack(side="left", padx=(8, 0))
+        ttk.Button(
+            search,
+            text="Scan Selected",
+            command=self._scan_selected,
+            style="Ghost.TButton",
+        ).pack(side="left", padx=(8, 0))
+        ttk.Button(
+            search,
+            text="Audit",
+            command=self._audit_tracks,
+            style="Ghost.TButton",
+        ).pack(side="left", padx=(8, 0))
 
         body = tk.Frame(self, bg=BG)
         body.pack(fill="both", expand=True, padx=16, pady=(0, 16))
@@ -527,7 +539,7 @@ class CatalogPanel(tk.Frame):
         if scope == "live_recordings":
             return ["name", "mtime", "path_full", "scope"]
         if scope == "user_library":
-            return ["name", "mtime", "path_full", "scope"]
+            return ["name", "tracks", "clips", "mtime", "path_full", "scope"]
         if scope == "preferences":
             return ["kind", "source", "mtime", "scope"]
         return ["name", "mtime", "path_full", "scope"]
@@ -536,7 +548,7 @@ class CatalogPanel(tk.Frame):
         if scope == "live_recordings":
             return ["tracks", "clips", "devices", "samples", "missing", "ext", "size"]
         if scope == "user_library":
-            return ["ext", "size", "missing"]
+            return ["ext", "size", "missing", "devices", "samples"]
         if scope == "preferences":
             return []
         return ["tracks", "clips", "devices", "samples", "missing", "ext", "size"]
@@ -597,7 +609,18 @@ class CatalogPanel(tk.Frame):
                 "path_full",
             ]
         if scope == "user_library":
-            return ["name", "ext", "size", "mtime", "path_full"]
+            return [
+                "name",
+                "ext",
+                "size",
+                "mtime",
+                "tracks",
+                "clips",
+                "devices",
+                "samples",
+                "missing",
+                "path_full",
+            ]
         if scope == "preferences":
             return ["kind", "source", "mtime"]
         return ["name", "ext", "size", "mtime", "missing", "path_full"]
@@ -627,6 +650,35 @@ class CatalogPanel(tk.Frame):
             tree.insert("", "end", values=row_values)
         win.focus_set()
 
+    def _scan_selected(self) -> None:
+        selection = self.tree.selection()
+        if not selection:
+            messagebox.showinfo("Scan Selected", "Select an item to scan.")
+            return
+        values = self.tree.item(selection[0], "values")
+        values_map = {col: values[idx] for idx, col in enumerate(self.visible_columns)}
+        scope = values_map.get("scope", self.scope_var.get())
+        if scope == "preferences":
+            messagebox.showinfo("Scan Selected", "Preferences are not scanned here.")
+            return
+        path = values_map.get("path_full")
+        if not path:
+            messagebox.showinfo("Scan Selected", "No path available for selection.")
+            return
+        target = Path(path)
+        if target.is_file():
+            target = target.parent
+        self.app.run_targeted_scan(scope, target)
+
+    def _audit_tracks(self) -> None:
+        issues = self.app.audit_zero_tracks()
+        if not issues:
+            messagebox.showinfo("Catalog Audit", "No zero-track sets found.")
+            return
+        messagebox.showwarning(
+            "Catalog Audit",
+            "Found sets with 0 tracks:\n" + "\n".join(issues[:8]),
+        )
     def _build_tree(self, columns: list[str]) -> None:
         for child in self.tree_frame.winfo_children():
             child.destroy()
@@ -765,7 +817,13 @@ class CatalogPanel(tk.Frame):
             )
         elif scope == "user_library":
             sql = (
-                "SELECT path, ext, size, mtime "
+                "SELECT path, ext, size, mtime, tracks_total, clips_total, "
+                "has_devices, has_samples, missing_refs, scanned_at, scope "
+                "FROM catalog_docs "
+                "WHERE scope = 'user_library' "
+                f"AND {where_sql} "
+                "UNION ALL "
+                "SELECT path, ext, size, mtime, NULL, NULL, 0, 0, 0, mtime, 'user_library' "
                 "FROM file_index_user_library "
                 "WHERE kind != 'ableton_doc' "
                 f"AND {where_sql} "
@@ -808,6 +866,11 @@ class CatalogPanel(tk.Frame):
                             "ext": row[1],
                             "size": str(row[2]),
                             "mtime": str(row[3]),
+                            "tracks": "" if row[4] is None else str(row[4]),
+                            "clips": "" if row[5] is None else str(row[5]),
+                            "devices": "yes" if row[6] else "no",
+                            "samples": "yes" if row[7] else "no",
+                            "missing": "yes" if row[8] else "no",
                             "scope": "user_library",
                         }
                     else:
@@ -2384,6 +2447,62 @@ class AbletoolsUI(tk.Tk):
         self._log_event("ANALYTICS", "completed")
         messagebox.showinfo("Analytics", "Analytics updated.")
         self.refresh_dashboard()
+
+    def run_targeted_scan(self, scope: str, root: Path) -> None:
+        scan_script = self.scan_script_path()
+        if not scan_script.exists():
+            messagebox.showerror("Scan Selected", f"Missing scanner script:\n{scan_script}")
+            return
+        cmd = [
+            sys.executable,
+            str(scan_script),
+            str(root),
+            "--scope",
+            scope,
+            "--out",
+            str(self.catalog_dir()),
+            "--incremental",
+            "--only-known",
+            "--verbose",
+        ]
+        self._log_event("SCAN", f"targeted: {cmd}")
+        try:
+            proc = subprocess.run(
+                cmd,
+                cwd=str(self.abletools_dir),
+                capture_output=True,
+                text=True,
+            )
+        except Exception as exc:
+            messagebox.showerror("Scan Selected", f"Failed to run scan:\n{exc}")
+            return
+        if proc.returncode != 0:
+            messagebox.showerror("Scan Selected", proc.stderr.strip() or "Scan failed.")
+            return
+        self.refresh_catalog_db()
+        self.refresh_dashboard()
+        messagebox.showinfo("Scan Selected", "Targeted scan completed.")
+
+    def audit_zero_tracks(self) -> list[str]:
+        db_path = self.resolve_catalog_db_path()
+        if not db_path or not db_path.exists():
+            return []
+        issues: list[str] = []
+        try:
+            with sqlite3.connect(db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                for scope, suffix in (
+                    ("live_recordings", ""),
+                    ("user_library", "_user_library"),
+                ):
+                    rows = conn.execute(
+                        f"SELECT path FROM ableton_docs{suffix} WHERE tracks_total = 0 LIMIT 50"
+                    ).fetchall()
+                    for row in rows:
+                        issues.append(f"{scope}: {row['path']}")
+        except Exception as exc:
+            self._log_event("ERROR", f"audit_zero_tracks: {exc}")
+        return issues
 
     def run_maintenance(self) -> None:
         db_path = self.resolve_catalog_db_path()
