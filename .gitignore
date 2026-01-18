@@ -4,6 +4,8 @@
 # Python
 __pycache__/
 *.py[cod]
+.ruff_cache/
+.pytest_cache/
 
 # Virtual envs
 venv/
@@ -13,6 +15,8 @@ venv/
 .abletools_catalog/
 *.bak
 test.als
+resources/out.txt
+resources/ChatGPT Image Jan 18, 2026, 02_19_59 AM.png
 
 # Editor
 .vscode/*
