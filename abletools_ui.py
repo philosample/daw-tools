@@ -379,7 +379,9 @@ class CatalogPanel(tk.Frame):
             fg=TEXT,
             insertbackground=TEXT,
             relief="flat",
-        ).pack(side="left", padx=(0, 8))
+        )
+        search_entry.pack(side="left", padx=(0, 8))
+        search_entry.bind("<Return>", lambda _event: self.refresh())
         ttk.Button(
             search,
             text="Search",
@@ -459,6 +461,7 @@ class CatalogPanel(tk.Frame):
                 "devices",
                 "samples",
                 "missing",
+                "scanned_at",
                 "scope",
             ),
             show="headings",
@@ -473,6 +476,7 @@ class CatalogPanel(tk.Frame):
         self.tree.heading("devices", text="Devices")
         self.tree.heading("samples", text="Samples")
         self.tree.heading("missing", text="Missing")
+        self.tree.heading("scanned_at", text="Scanned")
         self.tree.heading("scope", text="Scope")
         self.tree.column("path", width=360)
         self.tree.column("ext", width=50, anchor="center")
@@ -483,6 +487,7 @@ class CatalogPanel(tk.Frame):
         self.tree.column("devices", width=70, anchor="center")
         self.tree.column("samples", width=70, anchor="center")
         self.tree.column("missing", width=70, anchor="center")
+        self.tree.column("scanned_at", width=0, stretch=False)
         self.tree.column("scope", width=0, stretch=False)
         self.tree.grid(row=1, column=0, sticky="nsew", padx=12, pady=(0, 12))
         self.tree.bind("<<TreeviewSelect>>", self._on_select)
@@ -548,7 +553,7 @@ class CatalogPanel(tk.Frame):
         if scope == "all":
             sql = (
                 "SELECT path, ext, size, mtime, tracks_total, clips_total, "
-                "has_devices, has_samples, missing_refs, scope "
+                "has_devices, has_samples, missing_refs, scanned_at, scope "
                 "FROM catalog_docs "
                 f"WHERE {where_sql} "
                 "ORDER BY scanned_at DESC LIMIT 500"
@@ -556,7 +561,7 @@ class CatalogPanel(tk.Frame):
         else:
             sql = (
                 "SELECT path, ext, size, mtime, tracks_total, clips_total, "
-                "has_devices, has_samples, missing_refs, scope "
+                "has_devices, has_samples, missing_refs, scanned_at, scope "
                 "FROM catalog_docs "
                 f"WHERE scope = ? AND {where_sql} "
                 "ORDER BY scanned_at DESC LIMIT 500"
@@ -579,8 +584,17 @@ class CatalogPanel(tk.Frame):
                             "yes" if row[7] else "no",
                             "yes" if row[8] else "no",
                             row[9],
+                            row[10],
                         ),
                     )
+        except sqlite3.OperationalError as exc:
+            if "no such table: catalog_docs" in str(exc):
+                self._set_detail(
+                    "Catalog index not built. Updating database and retrying..."
+                )
+                self.app.refresh_catalog_db()
+                return self.refresh()
+            self._set_detail(f"Failed to load catalog: {exc}")
         except Exception as exc:
             self._set_detail(f"Failed to load catalog: {exc}")
 
@@ -598,7 +612,7 @@ class CatalogPanel(tk.Frame):
         if not values:
             return
         path = values[0]
-        scope = values[9] if len(values) > 9 else "live_recordings"
+        scope = values[10] if len(values) > 10 else "live_recordings"
         suffix = "" if scope == "live_recordings" else f"_{scope}"
         db_path = self.app.resolve_catalog_db_path()
         if not db_path or not db_path.exists():
@@ -776,29 +790,34 @@ class ScanPanel(ttk.LabelFrame):
             btns, text="Show Log", command=self._toggle_log, style="Ghost.TButton"
         )
         self.log_toggle.pack(side="right")
+        self.log_open_btn = ttk.Button(
+            btns, text="Open Log", command=self._open_log, style="Ghost.TButton"
+        )
+        self.log_open_btn.pack(side="right", padx=(0, 8))
 
         self.log_frame = tk.Frame(self, bg=PANEL)
         self.log_frame.grid(row=3, column=0, columnspan=3, sticky="nsew", pady=(10, 0))
         self.log_frame.grid_remove()
 
-        self.log_canvas = tk.Canvas(
-            self.log_frame, bg=PANEL, highlightthickness=0, relief="flat"
+        self.log_text = tk.Text(
+            self.log_frame,
+            bg=PANEL,
+            fg=TEXT,
+            insertbackground=TEXT,
+            relief="flat",
+            font=MONO_FONT,
+            wrap="none",
         )
-        self.log_scroll = tk.Scrollbar(self.log_frame, command=self.log_canvas.yview)
-        self.log_canvas.configure(yscrollcommand=self.log_scroll.set)
-        self.log_canvas.pack(side="left", fill="both", expand=True)
+        self.log_scroll = tk.Scrollbar(self.log_frame, command=self.log_text.yview)
+        self.log_text.configure(yscrollcommand=self.log_scroll.set)
+        self.log_text.pack(side="left", fill="both", expand=True)
         self.log_scroll.pack(side="right", fill="y")
+        self.log_text.bind("<Key>", lambda _event: "break")
+        self.log_text.bind("<Control-v>", lambda _event: "break")
+        self.log_text.bind("<Command-v>", lambda _event: "break")
 
-        self._log_font = tkfont.Font(family="Menlo", size=10)
-        self._log_line_height = max(16, self._log_font.metrics("linespace"))
-        self._log_y = 10
-        self._log_width = 0
-
-        log_gif_path = ABLETOOLS_DIR / "resources" / "scanners4-1920341542.gif"
-        self.log_bg = AnimatedGifCanvas(self.log_canvas, log_gif_path, delay_ms=80)
-        self.log_canvas.bind("<Configure>", self._on_log_resize)
-        # Defer first frame placement until the widget is realized.
-        self.after(100, self._init_log_bg)
+        self._log_file = None
+        self._log_file_path: Optional[Path] = None
 
         self.columnconfigure(1, weight=1)
         self.rowconfigure(3, weight=1)
@@ -808,18 +827,11 @@ class ScanPanel(ttk.LabelFrame):
             self.log_frame.grid_remove()
             self.log_visible.set(False)
             self.log_toggle.configure(text="Show Log")
-            self.log_bg.stop()
         else:
             self.log_frame.grid()
             self.log_visible.set(True)
             self.log_toggle.configure(text="Hide Log")
             self.update_idletasks()
-            width = self.log_canvas.winfo_width()
-            height = self.log_canvas.winfo_height()
-            if width > 0 and height > 0:
-                self.log_bg.place_centered(width, height)
-            self.log_bg.start()
-            self._raise_log_lines()
 
     def _browse(self) -> None:
         p = filedialog.askdirectory(
@@ -827,6 +839,15 @@ class ScanPanel(ttk.LabelFrame):
         )
         if p:
             self.root_var.set(p)
+
+    def _open_log(self) -> None:
+        if not self._log_file_path or not self._log_file_path.exists():
+            messagebox.showinfo("Scan Log", "No log file available yet.")
+            return
+        try:
+            self.app.tk.call("exec", "open", str(self._log_file_path))
+        except Exception:
+            messagebox.showwarning("Scan Log", str(self._log_file_path))
 
     def _on_scope_change(self, _event: object) -> None:
         scope = self.scope_var.get()
@@ -845,38 +866,13 @@ class ScanPanel(ttk.LabelFrame):
             self.root_var.set(str(root))
 
     def _append_log(self, line: str) -> None:
-        tag = ("log_line",)
-        self.log_canvas.create_text(
-            12,
-            self._log_y,
-            anchor="nw",
-            text=line.rstrip("\n"),
-            font=self._log_font,
-            fill=TEXT,
-            tags=tag,
-        )
-        self.log_canvas.tag_raise("log_line")
-        self._log_y += self._log_line_height
-        self.log_canvas.configure(scrollregion=(0, 0, 0, self._log_y + 20))
-        self.log_canvas.yview_moveto(1.0)
-
-    def _raise_log_lines(self) -> None:
-        self.log_canvas.tag_raise("log_line")
-
-    def _on_log_resize(self, event: tk.Event) -> None:
-        self._log_width = event.width
-        self.log_bg.place_centered(event.width, event.height)
-        self._raise_log_lines()
-
-    def _init_log_bg(self) -> None:
-        if not self.log_visible.get():
-            return
-        width = self.log_canvas.winfo_width()
-        height = self.log_canvas.winfo_height()
-        if width > 0 and height > 0:
-            self.log_bg.place_centered(width, height)
-            self.log_bg.start()
-            self._raise_log_lines()
+        stamp = datetime.now().strftime("%H:%M:%S")
+        formatted = f"[{stamp}] {line.rstrip('\n')}"
+        self.log_text.insert("end", formatted + "\n")
+        self.log_text.see("end")
+        if self._log_file:
+            self._log_file.write(formatted + "\n")
+            self._log_file.flush()
 
     def _enqueue(self, s: str) -> None:
         self._q.put(s)
@@ -896,6 +892,7 @@ class ScanPanel(ttk.LabelFrame):
             for cmd in cmds:
                 if self._stop_requested:
                     break
+                self._enqueue("-----")
                 self._enqueue(f"$ {' '.join(cmd)}")
                 self._proc = subprocess.Popen(
                     cmd,
@@ -950,6 +947,7 @@ class ScanPanel(ttk.LabelFrame):
         if not db_script.exists():
             self._enqueue("WARN: abletools_catalog_db.py missing; DB not updated.")
             return
+        self._enqueue(f"DB update: {db_script}")
         cmd = [sys.executable, str(db_script), str(catalog_dir), "--append"]
         try:
             proc = subprocess.run(
@@ -989,12 +987,12 @@ class ScanPanel(ttk.LabelFrame):
             if running:
                 self.progress.start(10)
                 self.gif.start()
-                if self.log_visible.get():
-                    self.log_bg.start()
             else:
                 self.progress.stop()
                 self.gif.stop()
-                self.log_bg.stop()
+                if self._log_file:
+                    self._log_file.close()
+                    self._log_file = None
 
         self.after(0, _apply)
 
@@ -1040,10 +1038,17 @@ class ScanPanel(ttk.LabelFrame):
         self._set_running(True)
 
         if self.log_visible.get():
-            self.log_canvas.delete("log_line")
-            self.log_canvas.delete("log_bg")
-            self._log_y = 10
-            self.log_canvas.configure(scrollregion=(0, 0, 0, 0))
+            self.log_text.delete("1.0", "end")
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_path = self.app.catalog_dir() / f"scan_log_{timestamp}.txt"
+        try:
+            self._log_file = log_path.open("w", encoding="utf-8")
+            self._log_file_path = log_path
+        except Exception:
+            self._log_file = None
+            self._log_file_path = None
+        self._enqueue(f"Logging to: {log_path}")
 
         t = threading.Thread(
             target=self._scan_thread, args=(cmds, self.app.abletools_dir), daemon=True
@@ -1782,13 +1787,13 @@ class AbletoolsUI(tk.Tk):
 
         ttk.Button(
             top,
-            text="Open DB",
+            text="DB Folder",
             command=self._open_db_location,
             style="Ghost.TButton",
         ).grid(row=0, column=2, padx=8)
         ttk.Button(
             top,
-            text="Run Scan",
+            text="Scan Tab",
             command=lambda: self.show_view("scan"),
             style="Accent.TButton",
         ).grid(row=0, column=3, padx=(0, 16))
@@ -2048,11 +2053,34 @@ class AbletoolsUI(tk.Tk):
         except Exception:
             messagebox.showwarning("Could not open folder", str(folder))
 
+    def refresh_catalog_db(self) -> None:
+        catalog_dir = self.catalog_dir()
+        db_script = self.abletools_dir / "abletools_catalog_db.py"
+        if not db_script.exists():
+            messagebox.showerror("Catalog", "Database script not found.")
+            return
+        catalog_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            proc = subprocess.run(
+                [sys.executable, str(db_script), str(catalog_dir), "--append"],
+                cwd=str(self.abletools_dir),
+                capture_output=True,
+                text=True,
+            )
+        except Exception as exc:
+            messagebox.showerror("Catalog", f"Failed to update DB:\n{exc}")
+            return
+        if proc.returncode != 0:
+            messagebox.showerror(
+                "Catalog", proc.stderr.strip() or "Database update failed."
+            )
+
     def run_analytics(self) -> None:
         db_path = self.resolve_catalog_db_path()
         if not db_path or not db_path.exists():
             messagebox.showinfo("Analytics", "No database found yet.")
             return
+        self.refresh_catalog_db()
         analytics = self.abletools_dir / "abletools_analytics.py"
         if not analytics.exists():
             messagebox.showerror("Analytics", f"Missing analytics script:\n{analytics}")
