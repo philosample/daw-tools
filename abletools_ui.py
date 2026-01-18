@@ -354,6 +354,7 @@ class CatalogPanel(tk.Frame):
         self.filter_samples = tk.BooleanVar(value=False)
         self.visible_columns: list[str] = []
         self._sort_state: dict[str, bool] = {}
+        self._last_rows: list[dict[str, str]] = []
         self._build()
 
     def _build(self) -> None:
@@ -403,6 +404,12 @@ class CatalogPanel(tk.Frame):
             search,
             text="Columns",
             command=self._show_columns_menu,
+            style="Ghost.TButton",
+        ).pack(side="left", padx=(8, 0))
+        ttk.Button(
+            search,
+            text="Full Table",
+            command=self._open_full_table,
             style="Ghost.TButton",
         ).pack(side="left", padx=(8, 0))
 
@@ -518,21 +525,21 @@ class CatalogPanel(tk.Frame):
 
     def _default_columns_for_scope(self, scope: str) -> list[str]:
         if scope == "live_recordings":
-            return ["name", "tracks", "clips", "missing", "mtime", "path_full", "scope"]
+            return ["name", "mtime", "path_full", "scope"]
         if scope == "user_library":
-            return ["name", "ext", "size", "mtime", "path_full", "scope"]
+            return ["name", "mtime", "path_full", "scope"]
         if scope == "preferences":
             return ["kind", "source", "mtime", "scope"]
-        return ["name", "ext", "missing", "mtime", "scope", "path_full"]
+        return ["name", "mtime", "path_full", "scope"]
 
     def _optional_columns_for_scope(self, scope: str) -> list[str]:
         if scope == "live_recordings":
-            return ["devices", "samples", "ext", "size"]
+            return ["tracks", "clips", "devices", "samples", "missing", "ext", "size"]
         if scope == "user_library":
-            return ["missing"]
+            return ["ext", "size", "missing"]
         if scope == "preferences":
             return []
-        return ["tracks", "clips", "devices", "samples", "size"]
+        return ["tracks", "clips", "devices", "samples", "missing", "ext", "size"]
 
     def _set_columns_for_scope(self, scope: str) -> None:
         base = self._default_columns_for_scope(scope)
@@ -574,6 +581,51 @@ class CatalogPanel(tk.Frame):
 
             menu.add_checkbutton(label=col.replace("_", " ").title(), variable=var, command=_toggle)
         menu.tk_popup(self.winfo_pointerx(), self.winfo_pointery())
+
+    def _full_columns_for_scope(self, scope: str) -> list[str]:
+        if scope == "live_recordings":
+            return [
+                "name",
+                "ext",
+                "size",
+                "mtime",
+                "tracks",
+                "clips",
+                "devices",
+                "samples",
+                "missing",
+                "path_full",
+            ]
+        if scope == "user_library":
+            return ["name", "ext", "size", "mtime", "path_full"]
+        if scope == "preferences":
+            return ["kind", "source", "mtime"]
+        return ["name", "ext", "size", "mtime", "missing", "path_full"]
+
+    def _open_full_table(self) -> None:
+        scope = self.scope_var.get()
+        if not self._last_rows:
+            self.refresh()
+        win = tk.Toplevel(self)
+        win.title("Catalog - Full Table")
+        win.geometry("900x600")
+        frame = tk.Frame(win, bg=BG)
+        frame.pack(fill="both", expand=True)
+        tree = ttk.Treeview(
+            frame,
+            columns=self._full_columns_for_scope(scope),
+            show="headings",
+            height=20,
+        )
+        for col in tree["columns"]:
+            heading = col.replace("_", " ").title()
+            tree.heading(col, text=heading, command=lambda c=col: None)
+            tree.column(col, anchor="w")
+        tree.pack(fill="both", expand=True)
+        for values in self._last_rows:
+            row_values = [values.get(col, "") for col in tree["columns"]]
+            tree.insert("", "end", values=row_values)
+        win.focus_set()
 
     def _build_tree(self, columns: list[str]) -> None:
         for child in self.tree_frame.winfo_children():
@@ -638,6 +690,17 @@ class CatalogPanel(tk.Frame):
         for index, (_, k) in enumerate(items):
             self.tree.move(k, "", index)
         self._sort_state[column] = not reverse
+
+    def _autosize_columns(self) -> None:
+        font = tkfont.Font(font=BODY_FONT)
+        for col in self.visible_columns:
+            if col == "path_full":
+                continue
+            max_width = font.measure(col.replace("_", " ").title()) + 20
+            for item in self.tree.get_children("")[:200]:
+                value = self.tree.set(item, col)
+                max_width = max(max_width, font.measure(value) + 20)
+            self.tree.column(col, width=min(max_width, 420))
 
     def _truncate_path(self, path: str, max_len: int = 60) -> str:
         if len(path) <= max_len:
@@ -721,12 +784,14 @@ class CatalogPanel(tk.Frame):
                 "SELECT path, ext, size, mtime, tracks_total, clips_total, "
                 "has_devices, has_samples, missing_refs, scanned_at, scope "
                 "FROM catalog_docs "
-                f"WHERE scope = ? AND {where_sql} "
+                "WHERE scope = ? AND ext IN ('.als', '.alc') AND "
+                f"{where_sql} "
                 "ORDER BY scanned_at DESC LIMIT 500"
             )
             params = [scope, *params]
         try:
             with sqlite3.connect(db_path) as conn:
+                self._last_rows = []
                 for row in conn.execute(sql, params):
                     if scope == "preferences":
                         values = {
@@ -753,8 +818,8 @@ class CatalogPanel(tk.Frame):
                             "ext": row[1],
                             "size": str(row[2]),
                             "mtime": str(row[3]),
-                            "tracks": str(row[4]),
-                            "clips": str(row[5]),
+                            "tracks": "" if row[4] is None else str(row[4]),
+                            "clips": "" if row[5] is None else str(row[5]),
                             "devices": "yes" if row[6] else "no",
                             "samples": "yes" if row[7] else "no",
                             "missing": "yes" if row[8] else "no",
@@ -763,6 +828,8 @@ class CatalogPanel(tk.Frame):
                         }
                     row_values = [values.get(col, "") for col in self.visible_columns]
                     self.tree.insert("", "end", values=row_values)
+                    self._last_rows.append(values)
+            self._autosize_columns()
         except sqlite3.OperationalError as exc:
             if "no such table" in str(exc):
                 self._set_detail_message(
