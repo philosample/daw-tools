@@ -6,6 +6,7 @@ import gzip
 import hashlib
 import io
 import json
+import mimetypes
 import os
 import re
 import sys
@@ -25,6 +26,7 @@ ABLETON_ARTIFACT_EXTS = {".adg", ".adv", ".agr", ".alp"}  # racks/presets/groove
 MEDIA_EXTS = {".wav", ".aif", ".aiff", ".flac", ".mp3", ".m4a", ".ogg"}
 
 DEFAULT_INDEX_EXTS = sorted(ABLETON_DOC_EXTS | ABLETON_ARTIFACT_EXTS)
+SCOPES = {"live_recordings", "user_library", "preferences"}
 
 # Ableton docs are typically gzipped XML.
 # We'll parse in a "schema-agnostic" way (heuristics) for MVP.
@@ -92,11 +94,15 @@ def write_scan_summary(
     refs_total: int,
     refs_missing: int,
     top_dirs: Counter[str],
+    scope: str,
+    all_files: bool,
 ) -> Path:
-    out = out_dir / "scan_summary.json"
+    summary_name = "scan_summary.json" if scope == "live_recordings" else f"scan_summary_{scope}.json"
+    out = out_dir / summary_name
     payload = {
         "root": str(root),
         "out": str(out_dir),
+        "scope": scope,
         "started_at": started_ts,
         "finished_at": finished_ts,
         "generated_at": _now_iso_local(),
@@ -105,6 +111,7 @@ def write_scan_summary(
         "files_indexed": int(indexed),
         "ableton_docs_parsed": int(parsed_docs),
         "files_skipped": int(skipped),
+        "all_files": bool(all_files),
         "ableton_sets": int(ableton_sets),
         "by_ext": {k: int(v) for k, v in by_ext.most_common()},
         "refs_total": int(refs_total),
@@ -267,6 +274,17 @@ def main(argv: list[str]) -> int:
     ap.add_argument("root", help="Root folder to scan (recursive).")
     ap.add_argument("--out", default=None, help="Output folder (default: <root>/.abletools_catalog)")
     ap.add_argument(
+        "--scope",
+        choices=sorted(SCOPES),
+        default="live_recordings",
+        help="Catalog scope (default: live_recordings)",
+    )
+    ap.add_argument(
+        "--only-known",
+        action="store_true",
+        help="Limit scanning to known Ableton and media extensions.",
+    )
+    ap.add_argument(
         "--include-media",
         action="store_true",
         help="Also index media files (wav/aif/flac/mp3/etc.)",
@@ -275,6 +293,11 @@ def main(argv: list[str]) -> int:
         "--hash",
         action="store_true",
         help="Compute sha1 for indexed files (slower, but better dedupe)",
+    )
+    ap.add_argument(
+        "--rehash-all",
+        action="store_true",
+        help="With --hash + --incremental, re-hash unchanged files to verify content.",
     )
     ap.add_argument(
         "--incremental",
@@ -298,13 +321,16 @@ def main(argv: list[str]) -> int:
     out_dir = Path(args.out).expanduser().resolve() if args.out else (root / ".abletools_catalog")
     ensure_dir(out_dir)
 
-    file_index_path = out_dir / "file_index.jsonl"
-    docs_path = out_dir / "ableton_docs.jsonl"
-    refs_path = out_dir / "refs_graph.jsonl"
-    state_path = out_dir / "scan_state.json"
+    scope = args.scope
+    suffix = "" if scope == "live_recordings" else f"_{scope}"
+    file_index_path = out_dir / f"file_index{suffix}.jsonl"
+    docs_path = out_dir / f"ableton_docs{suffix}.jsonl"
+    refs_path = out_dir / f"refs_graph{suffix}.jsonl"
+    state_path = out_dir / f"scan_state{suffix}.json"
 
     state = load_state(state_path)
 
+    all_files = not args.only_known
     wanted_exts = set(DEFAULT_INDEX_EXTS)
     if args.include_media:
         wanted_exts |= MEDIA_EXTS
@@ -324,33 +350,47 @@ def main(argv: list[str]) -> int:
     for p in iter_files(root):
         scanned += 1
         ext = p.suffix.lower()
-        if ext not in wanted_exts:
+        if not all_files and ext not in wanted_exts:
             continue
 
         try:
-            st = p.stat()
+            st = p.lstat()
         except FileNotFoundError:
             continue
 
         rel = str(p)
         size = int(st.st_size)
         mtime = int(st.st_mtime)
+        ctime = int(st.st_ctime)
+        atime = int(st.st_atime)
+        inode = int(getattr(st, "st_ino", 0))
+        device = int(getattr(st, "st_dev", 0))
+        mode = int(getattr(st, "st_mode", 0))
+        uid = int(getattr(st, "st_uid", 0))
+        gid = int(getattr(st, "st_gid", 0))
+        is_symlink = bool(mode & 0o120000)
+        symlink_target = None
+        if is_symlink:
+            try:
+                symlink_target = os.readlink(p)
+            except OSError:
+                symlink_target = None
 
         prev = state.get(rel)
         current_sha1: Optional[str] = None
         sha1_error: Optional[str] = None
         if args.incremental and prev:
-            if prev.get("size") == size and prev.get("mtime") == mtime:
-                if args.hash and prev.get("sha1"):
+            if prev.get("size") == size and prev.get("mtime") == mtime and prev.get("ctime") == ctime:
+                if args.hash and args.rehash_all:
                     try:
                         current_sha1 = sha1_file(p)
                     except Exception as e:
                         sha1_error = str(e)
                     else:
-                        if current_sha1 == prev.get("sha1"):
+                        if prev.get("sha1") and current_sha1 == prev.get("sha1"):
                             skipped += 1
                             continue
-                elif not args.hash:
+                else:
                     skipped += 1
                     continue
 
@@ -359,8 +399,21 @@ def main(argv: list[str]) -> int:
             "ext": ext,
             "size": size,
             "mtime": mtime,
+            "ctime": ctime,
+            "atime": atime,
+            "inode": inode,
+            "device": device,
+            "mode": mode,
+            "uid": uid,
+            "gid": gid,
+            "is_symlink": bool(is_symlink),
+            "symlink_target": symlink_target,
+            "name": p.name,
+            "parent": str(p.parent),
+            "mime": mimetypes.guess_type(p.name)[0],
             "kind": classify(ext),
             "scanned_at": started,
+            "scope": scope,
         }
 
         if args.hash:
@@ -392,7 +445,7 @@ def main(argv: list[str]) -> int:
         top_dirs[bucket] += 1
 
         # Update state
-        state[rel] = {"size": size, "mtime": mtime}
+        state[rel] = {"size": size, "mtime": mtime, "ctime": ctime}
         if args.hash and "sha1" in rec:
             state[rel]["sha1"] = rec["sha1"]
 
@@ -477,6 +530,8 @@ def main(argv: list[str]) -> int:
             refs_total=refs_total,
             refs_missing=refs_missing,
             top_dirs=top_dirs,
+            scope=scope,
+            all_files=all_files,
         )
     except Exception as e:
         # Don't fail the scan if summary writing fails

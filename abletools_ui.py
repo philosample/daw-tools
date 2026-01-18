@@ -1,39 +1,592 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import json
 import queue
+import sqlite3
 import subprocess
 import sys
 import threading
 import traceback
+from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
+import tempfile
+from typing import Optional
 
 import tkinter as tk
+import tkinter.font as tkfont
 from tkinter import filedialog, messagebox, ttk
 
+from abletools_prefs import get_key_paths, get_preferences_folder, suggest_scan_root
 from ramify_core import iter_targets, process_file
-
 
 ABLETOOLS_DIR = Path(__file__).resolve().parent
 
+BG = "#05070b"
+BG_NAV = "#060b12"
+PANEL = "#0c121b"
+PANEL_ALT = "#121b26"
+ACCENT = "#19f5c8"
+ACCENT_SOFT = "#14c5a2"
+ACCENT_2 = "#ff2ed1"
+TEXT = "#e6f1ff"
+MUTED = "#8aa4b3"
+BORDER = "#1b2a3a"
+WARN = "#ff6b6b"
+SUCCESS = "#7dffb2"
+
+TITLE_FONT = ("Menlo", 16, "bold")
+H2_FONT = ("Menlo", 12, "bold")
+BODY_FONT = ("Menlo", 11)
+MONO_FONT = ("Menlo", 10)
+
+
+class AnimatedGif:
+    def __init__(
+        self,
+        label: tk.Label,
+        path: Path,
+        delay_ms: int = 80,
+        subsample: int = 1,
+    ) -> None:
+        self.label = label
+        self.path = path
+        self.delay_ms = delay_ms
+        self.subsample = max(1, subsample)
+        self.frames: list[tk.PhotoImage] = []
+        self._job: Optional[str] = None
+        self._idx = 0
+        self._load_frames()
+
+    def _load_frames(self) -> None:
+        if not self.path.exists():
+            return
+        idx = 0
+        while True:
+            try:
+                frame = tk.PhotoImage(file=str(self.path), format=f"gif -index {idx}")
+            except tk.TclError:
+                break
+            if self.subsample > 1:
+                frame = frame.subsample(self.subsample, self.subsample)
+            self.frames.append(frame)
+            idx += 1
+
+    def start(self) -> None:
+        if not self.frames:
+            return
+        self.stop()
+        self._tick()
+
+    def _tick(self) -> None:
+        if not self.frames:
+            return
+        self.label.configure(image=self.frames[self._idx])
+        self._idx = (self._idx + 1) % len(self.frames)
+        self._job = self.label.after(self.delay_ms, self._tick)
+
+    def stop(self) -> None:
+        if self._job:
+            self.label.after_cancel(self._job)
+            self._job = None
+        if self.frames:
+            self.label.configure(image=self.frames[0])
+
+
+class AnimatedGifCanvas:
+    def __init__(
+        self,
+        canvas: tk.Canvas,
+        path: Path,
+        delay_ms: int = 80,
+        subsample: int = 1,
+    ) -> None:
+        self.canvas = canvas
+        self.path = path
+        self.delay_ms = delay_ms
+        self.subsample = max(1, subsample)
+        self.frames: list[tk.PhotoImage] = []
+        self._job: Optional[str] = None
+        self._idx = 0
+        self._item: Optional[int] = None
+        self._overlay: Optional[int] = None
+        self._load_frames()
+
+    def _load_frames(self) -> None:
+        if not self.path.exists():
+            return
+        idx = 0
+        while True:
+            try:
+                frame = tk.PhotoImage(file=str(self.path), format=f"gif -index {idx}")
+            except tk.TclError:
+                break
+            if self.subsample > 1:
+                frame = frame.subsample(self.subsample, self.subsample)
+            self.frames.append(frame)
+            idx += 1
+
+    def place_centered(self, width: int, height: int) -> None:
+        if not self.frames:
+            return
+        x = max(0, width // 2)
+        y = max(0, height // 2)
+        if self._item is None:
+            self._item = self.canvas.create_image(
+                x, y, image=self.frames[0], anchor="center", tags=("bg",)
+            )
+        else:
+            self.canvas.coords(self._item, x, y)
+        if self._overlay is None:
+            self._overlay = self.canvas.create_rectangle(
+                0,
+                0,
+                width,
+                height,
+                fill="#000000",
+                stipple="gray50",
+                outline="",
+                tags=("overlay",),
+            )
+        else:
+            self.canvas.coords(self._overlay, 0, 0, width, height)
+        self.canvas.tag_lower("bg")
+        self.canvas.tag_raise("overlay")
+
+    def start(self) -> None:
+        if not self.frames:
+            return
+        width = self.canvas.winfo_width()
+        height = self.canvas.winfo_height()
+        if width > 0 and height > 0:
+            self.place_centered(width, height)
+        self.stop()
+        self._tick()
+
+    def _tick(self) -> None:
+        if not self.frames or self._item is None:
+            return
+        self.canvas.itemconfigure(self._item, image=self.frames[self._idx])
+        self._idx = (self._idx + 1) % len(self.frames)
+        self._job = self.canvas.after(self.delay_ms, self._tick)
+
+    def stop(self) -> None:
+        if self._job:
+            self.canvas.after_cancel(self._job)
+            self._job = None
+        if self.frames and self._item is not None:
+            self.canvas.itemconfigure(self._item, image=self.frames[0])
+
+
+@dataclass
+class CatalogStats:
+    file_count: int = 0
+    doc_count: int = 0
+    refs_count: int = 0
+    missing_refs: int = 0
+    last_scan: str = ""
+
+
+def _now_iso() -> str:
+    return datetime.now().astimezone().isoformat(timespec="seconds")
+
+
+def _safe_read_json(path: Path) -> dict:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+class DashboardPanel(tk.Frame):
+    def __init__(self, master: tk.Misc, app: "AbletoolsUI") -> None:
+        super().__init__(master, bg=BG)
+        self.app = app
+        self.stats = CatalogStats()
+
+        self._build()
+
+    def _build(self) -> None:
+        header = tk.Frame(self, bg=BG)
+        header.pack(fill="x", padx=16, pady=(16, 8))
+
+        tk.Label(header, text="Dashboard", font=TITLE_FONT, fg=TEXT, bg=BG).pack(
+            side="left"
+        )
+        tk.Button(
+            header,
+            text="Refresh",
+            command=self.refresh,
+            bg=ACCENT,
+            fg="#001014",
+            relief="flat",
+            padx=14,
+            pady=6,
+        ).pack(side="right")
+
+        cards = tk.Frame(self, bg=BG)
+        cards.pack(fill="x", padx=16)
+        cards.columnconfigure((0, 1, 2, 3), weight=1)
+
+        self._card_files = self._make_stat_card(cards, "Files", 0)
+        self._card_docs = self._make_stat_card(cards, "Ableton Docs", 1)
+        self._card_refs = self._make_stat_card(cards, "Refs", 2)
+        self._card_missing = self._make_stat_card(cards, "Missing", 3)
+
+        activity = tk.Frame(self, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
+        activity.pack(fill="both", expand=True, padx=16, pady=16)
+
+        tk.Label(
+            activity,
+            text="Recent Activity",
+            font=H2_FONT,
+            fg=TEXT,
+            bg=PANEL,
+        ).pack(anchor="w", padx=12, pady=(10, 4))
+
+        self.activity_text = tk.Text(
+            activity,
+            height=8,
+            bg=PANEL,
+            fg=MUTED,
+            insertbackground=TEXT,
+            relief="flat",
+            font=MONO_FONT,
+        )
+        self.activity_text.pack(fill="both", expand=True, padx=12, pady=(0, 12))
+        self.activity_text.configure(state="disabled")
+
+    def _make_stat_card(self, master: tk.Frame, title: str, col: int) -> tk.Label:
+        card = tk.Frame(master, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
+        card.grid(row=0, column=col, sticky="nsew", padx=6, pady=6)
+
+        tk.Label(card, text=title, font=H2_FONT, fg=MUTED, bg=PANEL).pack(
+            anchor="w", padx=12, pady=(10, 0)
+        )
+        value = tk.Label(card, text="-", font=("Menlo", 20, "bold"), fg=TEXT, bg=PANEL)
+        value.pack(anchor="w", padx=12, pady=(4, 12))
+        return value
+
+    def refresh(self) -> None:
+        self.stats = self.app.load_catalog_stats()
+        self._card_files.configure(text=str(self.stats.file_count))
+        self._card_docs.configure(text=str(self.stats.doc_count))
+        self._card_refs.configure(text=str(self.stats.refs_count))
+        self._card_missing.configure(text=str(self.stats.missing_refs))
+
+        summary_path = self.app.resolve_scan_summary()
+        summary = _safe_read_json(summary_path) if summary_path else {}
+        lines = []
+        if summary:
+            lines.append(f"Last scan: {summary.get('generated_at', '')}")
+            lines.append(f"Files scanned: {summary.get('files_scanned', 0)}")
+            lines.append(f"Files indexed: {summary.get('files_indexed', 0)}")
+            lines.append(f"Docs parsed: {summary.get('ableton_docs_parsed', 0)}")
+            lines.append(f"Refs missing: {summary.get('refs_missing', 0)}")
+            lines.append(f"Duration sec: {summary.get('duration_sec', 0)}")
+        else:
+            lines.append("No scan summary found.")
+        self.activity_text.configure(state="normal")
+        self.activity_text.delete("1.0", "end")
+        self.activity_text.insert("end", "\n".join(lines))
+        self.activity_text.configure(state="disabled")
+
+
+class CatalogPanel(tk.Frame):
+    def __init__(self, master: tk.Misc, app: "AbletoolsUI") -> None:
+        super().__init__(master, bg=BG)
+        self.app = app
+        self.search_var = tk.StringVar(value="")
+        self.scope_var = tk.StringVar(value="live_recordings")
+        self.filter_missing = tk.BooleanVar(value=False)
+        self.filter_devices = tk.BooleanVar(value=False)
+        self.filter_samples = tk.BooleanVar(value=False)
+        self._build()
+
+    def _build(self) -> None:
+        header = tk.Frame(self, bg=BG)
+        header.pack(fill="x", padx=16, pady=(16, 8))
+
+        tk.Label(header, text="Catalog", font=TITLE_FONT, fg=TEXT, bg=BG).pack(
+            side="left"
+        )
+
+        search = tk.Frame(header, bg=BG)
+        search.pack(side="right")
+        ttk.Combobox(
+            search,
+            textvariable=self.scope_var,
+            values=["live_recordings", "user_library", "preferences", "all"],
+            state="readonly",
+            width=16,
+        ).pack(side="left", padx=(0, 8))
+        tk.Entry(
+            search,
+            textvariable=self.search_var,
+            font=BODY_FONT,
+            width=28,
+            bg=PANEL,
+            fg=TEXT,
+            insertbackground=TEXT,
+            relief="flat",
+        ).pack(side="left", padx=(0, 8))
+        ttk.Button(
+            search,
+            text="Search",
+            command=self.refresh,
+            style="Accent.TButton",
+        ).pack(side="left")
+        ttk.Button(
+            search,
+            text="Reset",
+            command=self._reset_filters,
+            style="Ghost.TButton",
+        ).pack(side="left", padx=(8, 0))
+
+        body = tk.Frame(self, bg=BG)
+        body.pack(fill="both", expand=True, padx=16, pady=(0, 16))
+        body.columnconfigure(1, weight=1)
+        body.rowconfigure(0, weight=1)
+
+        filters = tk.Frame(body, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
+        filters.grid(row=0, column=0, sticky="ns", padx=(0, 12))
+
+        tk.Label(filters, text="Filters", font=H2_FONT, fg=TEXT, bg=PANEL).pack(
+            anchor="w", padx=12, pady=(10, 6)
+        )
+        tk.Checkbutton(
+            filters,
+            text="Missing refs",
+            variable=self.filter_missing,
+            bg=PANEL,
+            fg=TEXT,
+            activebackground=PANEL,
+            activeforeground=TEXT,
+            selectcolor=BG_NAV,
+            command=self.refresh,
+        ).pack(anchor="w", padx=12, pady=2)
+        tk.Checkbutton(
+            filters,
+            text="Has devices",
+            variable=self.filter_devices,
+            bg=PANEL,
+            fg=TEXT,
+            activebackground=PANEL,
+            activeforeground=TEXT,
+            selectcolor=BG_NAV,
+            command=self.refresh,
+        ).pack(anchor="w", padx=12, pady=2)
+        tk.Checkbutton(
+            filters,
+            text="Has samples",
+            variable=self.filter_samples,
+            bg=PANEL,
+            fg=TEXT,
+            activebackground=PANEL,
+            activeforeground=TEXT,
+            selectcolor=BG_NAV,
+            command=self.refresh,
+        ).pack(anchor="w", padx=12, pady=(2, 12))
+
+        center = tk.Frame(body, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
+        center.grid(row=0, column=1, sticky="nsew")
+        center.rowconfigure(1, weight=1)
+        center.columnconfigure(0, weight=1)
+
+        tk.Label(center, text="Documents", font=H2_FONT, fg=TEXT, bg=PANEL).grid(
+            row=0, column=0, sticky="w", padx=12, pady=(10, 6)
+        )
+
+        self.tree = ttk.Treeview(
+            center,
+            columns=("path", "tracks", "clips", "scope"),
+            show="headings",
+            height=14,
+        )
+        self.tree.heading("path", text="Path")
+        self.tree.heading("tracks", text="Tracks")
+        self.tree.heading("clips", text="Clips")
+        self.tree.heading("scope", text="Scope")
+        self.tree.column("path", width=420)
+        self.tree.column("tracks", width=70, anchor="center")
+        self.tree.column("clips", width=70, anchor="center")
+        self.tree.column("scope", width=0, stretch=False)
+        self.tree.grid(row=1, column=0, sticky="nsew", padx=12, pady=(0, 12))
+        self.tree.bind("<<TreeviewSelect>>", self._on_select)
+
+        detail = tk.Frame(body, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
+        detail.grid(row=0, column=2, sticky="ns", padx=(12, 0))
+        detail.rowconfigure(1, weight=1)
+
+        tk.Label(detail, text="Details", font=H2_FONT, fg=TEXT, bg=PANEL).grid(
+            row=0, column=0, sticky="w", padx=12, pady=(10, 6)
+        )
+        self.detail_text = tk.Text(
+            detail,
+            width=34,
+            bg=PANEL,
+            fg=MUTED,
+            insertbackground=TEXT,
+            relief="flat",
+            font=MONO_FONT,
+        )
+        self.detail_text.grid(row=1, column=0, sticky="nsew", padx=12, pady=(0, 12))
+        self.detail_text.configure(state="disabled")
+
+    def _reset_filters(self) -> None:
+        self.search_var.set("")
+        self.filter_missing.set(False)
+        self.filter_devices.set(False)
+        self.filter_samples.set(False)
+        self.refresh()
+
+    def refresh(self) -> None:
+        if self.app.current_scope and self.scope_var.get() != "all":
+            if self.scope_var.get() != self.app.current_scope:
+                self.scope_var.set(self.app.current_scope)
+        db_path = self.app.resolve_catalog_db_path()
+        self.tree.delete(*self.tree.get_children())
+        self._set_detail("Select a document to view details.")
+        if not db_path or not db_path.exists():
+            self.app.ensure_catalog_db()
+            db_path = self.app.resolve_catalog_db_path()
+            if not db_path or not db_path.exists():
+                self._set_detail(
+                    f"No database found at {db_path}. Run a scan to populate data."
+                )
+                return
+
+        term = self.search_var.get().strip()
+        scope = self.scope_var.get()
+        clauses = ["error IS NULL"]
+        params = []
+        if term:
+            clauses.append("path LIKE ?")
+            params.append(f"%{term}%")
+        if self.filter_missing.get():
+            clauses.append("path IN (SELECT src FROM {refs_table} WHERE ref_exists = 0)")
+        if self.filter_devices.get():
+            clauses.append("path IN (SELECT doc_path FROM {hints_table})")
+        if self.filter_samples.get():
+            clauses.append("path IN (SELECT doc_path FROM {samples_table})")
+
+        where_sql = " AND ".join(clauses) if clauses else "1=1"
+
+        def scoped_sql(suffix: str, scope_label: str) -> str:
+            where = where_sql.format(
+                refs_table=f"refs_graph{suffix}",
+                hints_table=f"doc_device_hints{suffix}",
+                samples_table=f"doc_sample_refs{suffix}",
+            )
+            return (
+                "SELECT path, tracks_total, clips_total, "
+                f"'{scope_label}' AS scope "
+                f"FROM ableton_docs{suffix} "
+                f"WHERE {where}"
+            )
+
+        if scope == "all":
+            sql = (
+                scoped_sql("", "live_recordings")
+                + " UNION ALL "
+                + scoped_sql("_user_library", "user_library")
+                + " UNION ALL "
+                + scoped_sql("_preferences", "preferences")
+                + " ORDER BY scanned_at DESC LIMIT 500"
+            )
+        else:
+            suffix = "" if scope == "live_recordings" else f"_{scope}"
+            where = where_sql.format(
+                refs_table=f"refs_graph{suffix}",
+                hints_table=f"doc_device_hints{suffix}",
+                samples_table=f"doc_sample_refs{suffix}",
+            )
+            sql = (
+                "SELECT path, tracks_total, clips_total, "
+                f"'{scope}' AS scope "
+                f"FROM ableton_docs{suffix} "
+                f"WHERE {where} "
+                "ORDER BY scanned_at DESC LIMIT 500"
+            )
+        try:
+            with sqlite3.connect(db_path) as conn:
+                for row in conn.execute(sql, params):
+                    self.tree.insert("", "end", values=(row[0], row[1], row[2], row[3]))
+        except Exception as exc:
+            self._set_detail(f"Failed to load catalog: {exc}")
+
+    def _set_detail(self, text: str) -> None:
+        self.detail_text.configure(state="normal")
+        self.detail_text.delete("1.0", "end")
+        self.detail_text.insert("end", text)
+        self.detail_text.configure(state="disabled")
+
+    def _on_select(self, _event: object) -> None:
+        selection = self.tree.selection()
+        if not selection:
+            return
+        values = self.tree.item(selection[0], "values")
+        if not values:
+            return
+        path = values[0]
+        scope = values[3] if len(values) > 3 else "live_recordings"
+        suffix = "" if scope == "live_recordings" else f"_{scope}"
+        db_path = self.app.resolve_catalog_db_path()
+        if not db_path or not db_path.exists():
+            self._set_detail("No database found.")
+            return
+        try:
+            with sqlite3.connect(db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                doc = conn.execute(
+                    f"SELECT * FROM ableton_docs{suffix} WHERE path = ?", (path,)
+                ).fetchone()
+                samples = conn.execute(
+                    f"SELECT COUNT(*) FROM doc_sample_refs{suffix} WHERE doc_path = ?",
+                    (path,),
+                ).fetchone()[0]
+                devices = conn.execute(
+                    f"SELECT COUNT(*) FROM doc_device_hints{suffix} WHERE doc_path = ?",
+                    (path,),
+                ).fetchone()[0]
+                missing = conn.execute(
+                    f"SELECT COUNT(*) FROM refs_graph{suffix} WHERE src = ? AND ref_exists = 0",
+                    (path,),
+                ).fetchone()[0]
+        except Exception as exc:
+            self._set_detail(f"Failed to load details: {exc}")
+            return
+
+        if not doc:
+            self._set_detail("Document not found in database.")
+            return
+
+        lines = [
+            f"Path: {doc['path']}",
+            f"Tracks: {doc['tracks_total']}",
+            f"Clips: {doc['clips_total']}",
+            f"Samples: {samples}",
+            f"Devices: {devices}",
+            f"Missing refs: {missing}",
+            f"Scanned at: {doc['scanned_at']}",
+        ]
+        self._set_detail("\n".join(lines))
+
 
 class ScanPanel(ttk.LabelFrame):
-    """
-    Scan & Catalog panel:
-    - Runs abletools_scan.py as a subprocess
-    - Streams stdout/stderr into a log box
-    - Supports cancel
-    """
-
-    def __init__(self, master, abletools_dir: str):
+    def __init__(self, master: tk.Misc, app: "AbletoolsUI") -> None:
         super().__init__(master, text="Scan & Catalog", padding=10)
-        self.abletools_dir = Path(abletools_dir)
+        self.app = app
 
-        # Default scan root to the parent folder of the tool dir (more useful than scanning the tool itself)
-        self.root_var = tk.StringVar(value=str(self.abletools_dir.parent))
+        self.root_var = tk.StringVar(value=str(self.app.default_scan_root()))
         self.incremental_var = tk.BooleanVar(value=True)
         self.include_media_var = tk.BooleanVar(value=False)
         self.hash_var = tk.BooleanVar(value=False)
+        self.rehash_var = tk.BooleanVar(value=False)
+        self.scope_var = tk.StringVar(value="live_recordings")
+        self.all_files_var = tk.BooleanVar(value=True)
+        self.log_visible = tk.BooleanVar(value=False)
 
         self._proc: subprocess.Popen | None = None
         self._q: queue.Queue[str] = queue.Queue()
@@ -42,80 +595,183 @@ class ScanPanel(ttk.LabelFrame):
         self._build_ui()
         self._pump_queue()
 
-    def _build_ui(self):
-        # Row 0: root path + browse
-        ttk.Label(self, text="Root folder:").grid(row=0, column=0, sticky="w")
-        self.root_entry = ttk.Entry(self, textvariable=self.root_var, width=60)
+    def _build_ui(self) -> None:
+        header = ttk.Frame(self)
+        header.grid(row=0, column=0, columnspan=3, sticky="we", pady=(0, 6))
+        header.columnconfigure(1, weight=1)
+
+        ttk.Label(header, text="Root folder:").grid(row=0, column=0, sticky="w")
+        self.root_entry = ttk.Entry(header, textvariable=self.root_var, width=60)
         self.root_entry.grid(row=0, column=1, sticky="we", padx=(8, 8))
-        ttk.Button(self, text="Browse…", command=self._browse).grid(
+        ttk.Button(header, text="Browse...", command=self._browse, style="Ghost.TButton").grid(
             row=0, column=2, sticky="e"
         )
 
-        # Row 1: options
+        self.gif = AnimatedGif(tk.Label(header), Path(), delay_ms=80)
+
         opts = ttk.Frame(self)
-        opts.grid(row=1, column=0, columnspan=3, sticky="w", pady=(8, 0))
+        opts.grid(row=1, column=0, columnspan=3, sticky="w", pady=(6, 0))
+
+        ttk.Label(opts, text="Scope:").grid(row=0, column=0, sticky="w", padx=(0, 6))
+        scope_menu = ttk.Combobox(
+            opts,
+            textvariable=self.scope_var,
+            values=["live_recordings", "user_library", "preferences"],
+            state="readonly",
+            width=16,
+        )
+        scope_menu.grid(row=0, column=1, sticky="w", padx=(0, 14))
+        scope_menu.bind("<<ComboboxSelected>>", self._on_scope_change)
 
         ttk.Checkbutton(
             opts,
             text="Incremental (skip unchanged)",
             variable=self.incremental_var,
-        ).grid(row=0, column=0, sticky="w", padx=(0, 14))
+        ).grid(row=0, column=2, sticky="w", padx=(0, 14))
         ttk.Checkbutton(
             opts,
             text="Include media files",
             variable=self.include_media_var,
-        ).grid(row=0, column=1, sticky="w", padx=(0, 14))
+        ).grid(row=0, column=3, sticky="w", padx=(0, 14))
         ttk.Checkbutton(
             opts,
             text="Compute hashes (slow)",
             variable=self.hash_var,
-        ).grid(row=0, column=2, sticky="w")
+        ).grid(row=0, column=4, sticky="w")
+        ttk.Checkbutton(
+            opts,
+            text="Rehash unchanged",
+            variable=self.rehash_var,
+        ).grid(row=0, column=5, sticky="w", padx=(14, 0))
+        ttk.Checkbutton(
+            opts,
+            text="All files",
+            variable=self.all_files_var,
+        ).grid(row=0, column=6, sticky="w", padx=(14, 0))
 
-        # Row 2: buttons + status
         btns = ttk.Frame(self)
         btns.grid(row=2, column=0, columnspan=3, sticky="we", pady=(10, 0))
 
-        self.start_btn = ttk.Button(btns, text="Start Scan", command=self.start_scan)
+        self.start_btn = ttk.Button(
+            btns, text="Start Scan", command=self.start_scan, style="Accent.TButton"
+        )
         self.start_btn.pack(side="left")
 
         self.cancel_btn = ttk.Button(
-            btns, text="Cancel", command=self.cancel_scan, state="disabled"
+            btns,
+            text="Cancel",
+            command=self.cancel_scan,
+            state="disabled",
+            style="Ghost.TButton",
         )
         self.cancel_btn.pack(side="left", padx=(8, 0))
 
         self.status_var = tk.StringVar(value="Idle")
         ttk.Label(btns, textvariable=self.status_var).pack(side="left", padx=(12, 0))
 
-        # Row 3: log output
-        # Keep this smaller so it doesn't crowd the main RAMify log in a 920x560 window.
-        self.log = tk.Text(self, height=10, wrap="word")
-        self.log.grid(row=3, column=0, columnspan=3, sticky="nsew", pady=(10, 0))
-        self.log.configure(state="disabled")
+        self.progress = ttk.Progressbar(btns, mode="indeterminate", length=200)
+        self.progress.pack(side="left", padx=(12, 0))
 
-        # Grid stretch
+        self.log_toggle = ttk.Button(
+            btns, text="Show Log", command=self._toggle_log, style="Ghost.TButton"
+        )
+        self.log_toggle.pack(side="right")
+
+        self.log_frame = tk.Frame(self, bg=PANEL)
+        self.log_frame.grid(row=3, column=0, columnspan=3, sticky="nsew", pady=(10, 0))
+        self.log_frame.grid_remove()
+
+        self.log_canvas = tk.Canvas(
+            self.log_frame, bg=PANEL, highlightthickness=0, relief="flat"
+        )
+        self.log_scroll = tk.Scrollbar(self.log_frame, command=self.log_canvas.yview)
+        self.log_canvas.configure(yscrollcommand=self.log_scroll.set)
+        self.log_canvas.pack(side="left", fill="both", expand=True)
+        self.log_scroll.pack(side="right", fill="y")
+
+        self._log_font = tkfont.Font(family="Menlo", size=10)
+        self._log_line_height = max(16, self._log_font.metrics("linespace"))
+        self._log_y = 10
+        self._log_width = 0
+
+        log_gif_path = ABLETOOLS_DIR / "resources" / "scanners4-1920341542.gif"
+        self.log_bg = AnimatedGifCanvas(self.log_canvas, log_gif_path, delay_ms=80)
+        self.log_canvas.bind("<Configure>", self._on_log_resize)
+        # Defer first frame placement until the widget is realized.
+        self.after(100, self._init_log_bg)
+
         self.columnconfigure(1, weight=1)
         self.rowconfigure(3, weight=1)
 
-    def _browse(self):
+    def _toggle_log(self) -> None:
+        if self.log_visible.get():
+            self.log_frame.grid_remove()
+            self.log_visible.set(False)
+            self.log_toggle.configure(text="Show Log")
+            self.log_bg.stop()
+        else:
+            self.log_frame.grid()
+            self.log_visible.set(True)
+            self.log_toggle.configure(text="Hide Log")
+            self.update_idletasks()
+            width = self.log_canvas.winfo_width()
+            height = self.log_canvas.winfo_height()
+            if width > 0 and height > 0:
+                self.log_bg.place_centered(width, height)
+            self.log_bg.start()
+
+    def _browse(self) -> None:
         p = filedialog.askdirectory(
-            initialdir=self.root_var.get() or str(self.abletools_dir.parent)
+            initialdir=self.root_var.get() or str(self.app.default_scan_root())
         )
         if p:
             self.root_var.set(p)
 
-    def _append_log(self, line: str):
-        self.log.configure(state="normal")
-        self.log.insert("end", line)
-        if not line.endswith("\n"):
-            self.log.insert("end", "\n")
-        self.log.see("end")
-        self.log.configure(state="disabled")
+    def _on_scope_change(self, _event: object) -> None:
+        scope = self.scope_var.get()
+        self.app.set_current_scope(scope)
+        if scope == "user_library":
+            root = self.app.user_library_root()
+        elif scope == "preferences":
+            root = self.app.preferences_root()
+        else:
+            root = self.app.default_scan_root()
+        if root:
+            self.root_var.set(str(root))
 
-    def _enqueue(self, s: str):
+    def _append_log(self, line: str) -> None:
+        tag = ("log_line",)
+        self.log_canvas.create_text(
+            12,
+            self._log_y,
+            anchor="nw",
+            text=line.rstrip("\n"),
+            font=self._log_font,
+            fill=TEXT,
+            tags=tag,
+        )
+        self.log_canvas.tag_raise("log_line")
+        self._log_y += self._log_line_height
+        self.log_canvas.configure(scrollregion=(0, 0, 0, self._log_y + 20))
+        self.log_canvas.yview_moveto(1.0)
+
+    def _on_log_resize(self, event: tk.Event) -> None:
+        self._log_width = event.width
+        self.log_bg.place_centered(event.width, event.height)
+
+    def _init_log_bg(self) -> None:
+        if not self.log_visible.get():
+            return
+        width = self.log_canvas.winfo_width()
+        height = self.log_canvas.winfo_height()
+        if width > 0 and height > 0:
+            self.log_bg.place_centered(width, height)
+            self.log_bg.start()
+
+    def _enqueue(self, s: str) -> None:
         self._q.put(s)
 
-    def _pump_queue(self):
-        # Pull queued log lines into the UI
+    def _pump_queue(self) -> None:
         try:
             while True:
                 s = self._q.get_nowait()
@@ -124,7 +780,7 @@ class ScanPanel(ttk.LabelFrame):
             pass
         self.after(100, self._pump_queue)
 
-    def _scan_thread(self, cmd: list[str], cwd: Path):
+    def _scan_thread(self, cmd: list[str], cwd: Path) -> None:
         try:
             self._enqueue(f"$ {' '.join(cmd)}")
             self._proc = subprocess.Popen(
@@ -148,12 +804,18 @@ class ScanPanel(ttk.LabelFrame):
             except subprocess.TimeoutExpired:
                 self._proc.kill()
                 rc = self._proc.wait(timeout=5)
+
             if self._stop_requested:
                 self._enqueue("Scan cancelled.")
                 self.status_var.set("Cancelled")
             elif rc == 0:
-                self._enqueue("Scan complete ✅")
+                self._enqueue("Scan complete")
+                self._enqueue("Updating catalog DB...")
+                self._build_db()
                 self.status_var.set("Done")
+                self.app.set_active_root(Path(self.root_var.get()))
+                self.app.set_current_scope(self.scope_var.get())
+                self.app.refresh_dashboard()
             else:
                 self._enqueue(f"Scan failed (exit={rc})")
                 self.status_var.set("Error")
@@ -166,16 +828,45 @@ class ScanPanel(ttk.LabelFrame):
             self._stop_requested = False
             self._set_running(False)
 
-    def _set_running(self, running: bool):
-        # UI-safe toggle (must be called from UI thread)
+    def _build_db(self) -> None:
+        catalog_dir = self.app.catalog_dir()
+        db_script = self.app.abletools_dir / "abletools_catalog_db.py"
+        if not db_script.exists():
+            self._enqueue("WARN: abletools_catalog_db.py missing; DB not updated.")
+            return
+        cmd = [sys.executable, str(db_script), str(catalog_dir), "--append"]
+        try:
+            proc = subprocess.run(
+                cmd,
+                cwd=str(self.app.abletools_dir),
+                capture_output=True,
+                text=True,
+            )
+        except Exception as exc:
+            self._enqueue(f"DB update failed: {exc}")
+            return
+        if proc.stdout:
+            self._enqueue(proc.stdout.strip())
+        if proc.returncode != 0:
+            self._enqueue(proc.stderr.strip() or "DB update failed.")
 
-        def _apply():
+    def _set_running(self, running: bool) -> None:
+        def _apply() -> None:
             self.start_btn.configure(state="disabled" if running else "normal")
             self.cancel_btn.configure(state="normal" if running else "disabled")
+            if running:
+                self.progress.start(10)
+                self.gif.start()
+                if self.log_visible.get():
+                    self.log_bg.start()
+            else:
+                self.progress.stop()
+                self.gif.stop()
+                self.log_bg.stop()
 
         self.after(0, _apply)
 
-    def start_scan(self):
+    def start_scan(self) -> None:
         if self._proc is not None:
             return
 
@@ -184,29 +875,41 @@ class ScanPanel(ttk.LabelFrame):
             messagebox.showerror("Scan", f"Root folder does not exist:\n{root}")
             return
 
-        scan_script = self.abletools_dir / "abletools_scan.py"
+        scan_script = self.app.scan_script_path()
         if not scan_script.exists():
             messagebox.showerror("Scan", f"Missing scanner script:\n{scan_script}")
             return
 
         cmd = [sys.executable, str(scan_script), str(root)]
+        cmd.extend(["--scope", self.scope_var.get()])
+        cmd.extend(["--out", str(self.app.catalog_dir())])
         if self.incremental_var.get():
             cmd.append("--incremental")
         if self.include_media_var.get():
             cmd.append("--include-media")
         if self.hash_var.get():
             cmd.append("--hash")
+            if self.rehash_var.get():
+                cmd.append("--rehash-all")
+        if not self.all_files_var.get():
+            cmd.append("--only-known")
         cmd.append("--verbose")
 
-        self.status_var.set("Running…")
+        self.status_var.set("Running...")
         self._set_running(True)
 
+        if self.log_visible.get():
+            self.log_canvas.delete("log_line")
+            self.log_canvas.delete("log_bg")
+            self._log_y = 10
+            self.log_canvas.configure(scrollregion=(0, 0, 0, 0))
+
         t = threading.Thread(
-            target=self._scan_thread, args=(cmd, self.abletools_dir), daemon=True
+            target=self._scan_thread, args=(cmd, self.app.abletools_dir), daemon=True
         )
         t.start()
 
-    def cancel_scan(self):
+    def cancel_scan(self) -> None:
         if self._proc is None:
             return
         self._stop_requested = True
@@ -216,101 +919,183 @@ class ScanPanel(ttk.LabelFrame):
             pass
 
 
-class AbletoolsUI(tk.Tk):
-    def __init__(self):
-        super().__init__()
-        self.title("Abletools – RAMify Ableton Sets")
-        self.geometry("920x560")
+class ScanView(tk.Frame):
+    def __init__(self, master: tk.Misc, app: "AbletoolsUI") -> None:
+        super().__init__(master, bg=BG)
+        self.app = app
+        self._build()
 
+    def _build(self) -> None:
+        header = tk.Frame(self, bg=BG)
+        header.pack(fill="x", padx=16, pady=(16, 8))
+        tk.Label(header, text="Scan", font=TITLE_FONT, fg=TEXT, bg=BG).pack(
+            side="left"
+        )
+        tk.Label(
+            header,
+            text="Automate catalog updates with live stats.",
+            font=BODY_FONT,
+            fg=MUTED,
+            bg=BG,
+        ).pack(side="left", padx=(12, 0))
+
+        panel = tk.Frame(self, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
+        panel.pack(fill="both", expand=True, padx=16, pady=(0, 16))
+
+        self.scan_panel = ScanPanel(panel, self.app)
+        self.scan_panel.pack(fill="both", expand=True)
+
+
+class RamifyPanel(tk.Frame):
+    def __init__(self, master: tk.Misc) -> None:
+        super().__init__(master, bg=BG)
         self.path_var = tk.StringVar(value="")
         self.dry_var = tk.BooleanVar(value=True)
         self.inplace_var = tk.BooleanVar(value=True)
         self.rec_var = tk.BooleanVar(value=False)
-
         self._build()
 
-    def _build(self):
-        pad = 10
-
-        header = tk.Frame(self)
-        header.pack(fill="x", padx=pad, pady=(pad, 0))
-
-        tk.Label(header, text="Target (.als/.alc file or folder):").pack(anchor="w")
-
-        row = tk.Frame(header)
-        row.pack(fill="x", pady=(6, 0))
-
-        tk.Entry(row, textvariable=self.path_var).pack(
-            side="left", fill="x", expand=True
-        )
-        tk.Button(row, text="Choose File…", command=self.choose_file).pack(
-            side="left", padx=(8, 0)
-        )
-        tk.Button(row, text="Choose Folder…", command=self.choose_folder).pack(
-            side="left", padx=(8, 0)
-        )
-
-        opts = tk.Frame(self)
-        opts.pack(fill="x", padx=pad, pady=(pad, 0))
-
-        tk.Checkbutton(opts, text="Dry run (no writes)", variable=self.dry_var).pack(
+    def _build(self) -> None:
+        header = tk.Frame(self, bg=BG)
+        header.pack(fill="x", padx=16, pady=(16, 8))
+        tk.Label(header, text="Tools", font=TITLE_FONT, fg=TEXT, bg=BG).pack(
             side="left"
         )
-        tk.Checkbutton(
-            opts, text="In-place (create .bak)", variable=self.inplace_var
-        ).pack(side="left", padx=(18, 0))
-        tk.Checkbutton(opts, text="Recursive (if folder)", variable=self.rec_var).pack(
-            side="left", padx=(18, 0)
-        )
+        tk.Label(
+            header,
+            text="Automations and utilities.",
+            font=BODY_FONT,
+            fg=MUTED,
+            bg=BG,
+        ).pack(side="left", padx=(12, 0))
 
-        actions = tk.Frame(self)
-        actions.pack(fill="x", padx=pad, pady=(pad, 0))
+        card = tk.Frame(self, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
+        card.pack(fill="both", expand=True, padx=16, pady=(0, 16))
 
-        self.run_btn = tk.Button(actions, text="Run", command=self.run_clicked, width=12)
-        self.run_btn.pack(side="left")
+        tool_header = tk.Frame(card, bg=PANEL)
+        tool_header.pack(fill="x", padx=16, pady=(12, 2))
+        tool_title = tk.Frame(tool_header, bg=PANEL)
+        tool_title.pack(side="left")
 
-        tk.Button(actions, text="Clear Log", command=self.clear_log).pack(
-            side="left", padx=(8, 0)
-        )
-        tk.Button(
-            actions, text="Open Target Folder", command=self.open_target_folder
+        tk.Label(
+            tool_title,
+            text="RAMify Ableton Sets",
+            font=H2_FONT,
+            fg=TEXT,
+            bg=PANEL,
+        ).pack(anchor="w")
+        tk.Label(
+            tool_title,
+            text="Flip AudioClip RAM flags for faster playback.",
+            font=BODY_FONT,
+            fg=MUTED,
+            bg=PANEL,
+        ).pack(anchor="w")
+
+        ram_gif_slot = tk.Label(tool_header, bg=PANEL, width=120, height=70)
+        ram_gif_slot.pack(side="right")
+        ram_gif_path = ABLETOOLS_DIR / "resources" / "ram.gif"
+        self.ram_gif = AnimatedGif(ram_gif_slot, ram_gif_path, delay_ms=70, subsample=2)
+        if self.ram_gif.frames:
+            ram_gif_slot.configure(image=self.ram_gif.frames[0])
+
+        target_row = tk.Frame(card, bg=PANEL)
+        target_row.pack(fill="x", padx=16, pady=(10, 4))
+
+        tk.Entry(
+            target_row,
+            textvariable=self.path_var,
+            font=BODY_FONT,
+            bg=PANEL_ALT,
+            fg=TEXT,
+            insertbackground=TEXT,
+            relief="flat",
+        ).pack(side="left", fill="x", expand=True)
+
+        ttk.Button(
+            target_row,
+            text="Choose File",
+            command=self.choose_file,
+            style="Accent.TButton",
+        ).pack(side="left", padx=(8, 0))
+        ttk.Button(
+            target_row,
+            text="Choose Folder",
+            command=self.choose_folder,
+            style="Ghost.TButton",
         ).pack(side="left", padx=(8, 0))
 
-        # Log box
-        log_frame = tk.Frame(self)
-        log_frame.pack(fill="both", expand=True, padx=pad, pady=(pad, 6))
+        opts = tk.Frame(card, bg=PANEL)
+        opts.pack(fill="x", padx=16, pady=(6, 0))
+        tk.Checkbutton(
+            opts,
+            text="Dry run (no writes)",
+            variable=self.dry_var,
+            bg=PANEL,
+            fg=TEXT,
+            activebackground=PANEL,
+            activeforeground=TEXT,
+            selectcolor=BG_NAV,
+        ).pack(side="left")
+        tk.Checkbutton(
+            opts,
+            text="In-place (create .bak)",
+            variable=self.inplace_var,
+            bg=PANEL,
+            fg=TEXT,
+            activebackground=PANEL,
+            activeforeground=TEXT,
+            selectcolor=BG_NAV,
+        ).pack(side="left", padx=(18, 0))
+        tk.Checkbutton(
+            opts,
+            text="Recursive (if folder)",
+            variable=self.rec_var,
+            bg=PANEL,
+            fg=TEXT,
+            activebackground=PANEL,
+            activeforeground=TEXT,
+            selectcolor=BG_NAV,
+        ).pack(side="left", padx=(18, 0))
 
-        self.log = tk.Text(log_frame, wrap="word")
-        self.log.configure(height=14)
-        self.log.pack(side="left", fill="both", expand=True)
+        actions = tk.Frame(card, bg=PANEL)
+        actions.pack(fill="x", padx=16, pady=(10, 0))
+        self.run_btn = ttk.Button(
+            actions,
+            text="Run RAMify",
+            command=self.run_clicked,
+            style="Accent.TButton",
+        )
+        self.run_btn.pack(side="left")
+        ttk.Button(
+            actions,
+            text="Clear Log",
+            command=self.clear_log,
+            style="Ghost.TButton",
+        ).pack(side="left", padx=(8, 0))
 
-        # Scrollbar: build the log fully BEFORE adding the scan panel below
-        sb = tk.Scrollbar(log_frame, command=self.log.yview)
-        sb.pack(side="right", fill="y")
-        self.log.configure(yscrollcommand=sb.set)
+        self.log = tk.Text(
+            card,
+            wrap="word",
+            bg=PANEL_ALT,
+            fg=TEXT,
+            insertbackground=TEXT,
+            relief="flat",
+            height=14,
+            font=MONO_FONT,
+        )
+        self.log.pack(fill="both", expand=True, padx=16, pady=(12, 16))
 
-        # -------------------------------------------------
-        # Scan & Catalog panel (runs abletools_scan.py)
-        # -------------------------------------------------
-        sep = ttk.Separator(self, orient="horizontal")
-        sep.pack(fill="x", padx=pad, pady=(0, pad))
+        self._log("Ready. Tip: start with Dry run")
 
-        scan_container = ttk.Frame(self)
-        scan_container.pack(fill="both", expand=False, padx=pad, pady=(0, pad))
-
-        self.scan_panel = ScanPanel(scan_container, str(ABLETOOLS_DIR))
-        self.scan_panel.pack(fill="both", expand=True)
-
-        self._log("Ready. Tip: start with Dry run ✅")
-
-    def _log(self, msg: str):
+    def _log(self, msg: str) -> None:
         self.log.insert("end", msg + "\n")
         self.log.see("end")
 
-    def clear_log(self):
+    def clear_log(self) -> None:
         self.log.delete("1.0", "end")
 
-    def choose_file(self):
+    def choose_file(self) -> None:
         p = filedialog.askopenfilename(
             title="Choose Ableton set/clip",
             filetypes=[("Ableton Live", "*.als *.alc"), ("All files", "*.*")],
@@ -318,25 +1103,12 @@ class AbletoolsUI(tk.Tk):
         if p:
             self.path_var.set(p)
 
-    def choose_folder(self):
+    def choose_folder(self) -> None:
         p = filedialog.askdirectory(title="Choose folder containing .als/.alc files")
         if p:
             self.path_var.set(p)
 
-    def open_target_folder(self):
-        p = self.path_var.get().strip()
-        if not p:
-            messagebox.showinfo("No target", "Choose a file or folder first.")
-            return
-        path = Path(p).expanduser()
-        folder = path if path.is_dir() else path.parent
-        try:
-            # macOS: "open" via subprocess-free Tk call
-            self.tk.call("exec", "open", str(folder))
-        except Exception:
-            messagebox.showwarning("Could not open folder", str(folder))
-
-    def run_clicked(self):
+    def run_clicked(self) -> None:
         p = self.path_var.get().strip()
         if not p:
             messagebox.showerror(
@@ -353,20 +1125,17 @@ class AbletoolsUI(tk.Tk):
         inplace = bool(self.inplace_var.get())
         recursive = bool(self.rec_var.get())
 
-        # Guardrail: if dry run is on, in-place/out doesn't matter
-        if dry:
-            mode = "DRY RUN"
-        else:
-            mode = "IN-PLACE" if inplace else "WRITE .ram.* COPIES"
+        mode = "DRY RUN" if dry else ("IN-PLACE" if inplace else "WRITE .ram.* COPIES")
 
         self.run_btn.configure(state="disabled")
+        self.ram_gif.start()
         self._log("")
         self._log(f"=== Running: {mode} ===")
         self._log(f"Target: {target}")
         self._log(f"Recursive: {recursive}")
         self._log("")
 
-        def worker():
+        def worker() -> None:
             try:
                 total_files = total_audio = total_flips = failed = 0
                 for f in iter_targets(target, recursive):
@@ -408,9 +1177,712 @@ class AbletoolsUI(tk.Tk):
                 tb = traceback.format_exc()
                 self.after(0, self._log, tb)
             finally:
-                self.after(0, lambda: self.run_btn.configure(state="normal"))
+                self.after(0, self._finish_run)
 
         threading.Thread(target=worker, daemon=True).start()
+
+    def _finish_run(self) -> None:
+        self.run_btn.configure(state="normal")
+        self.ram_gif.stop()
+
+
+class SettingsPanel(tk.Frame):
+    def __init__(self, master: tk.Misc) -> None:
+        super().__init__(master, bg=BG)
+        header = tk.Frame(self, bg=BG)
+        header.pack(fill="x", padx=16, pady=(16, 8))
+        tk.Label(header, text="Settings", font=TITLE_FONT, fg=TEXT, bg=BG).pack(
+            side="left"
+        )
+
+        card = tk.Frame(self, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
+        card.pack(fill="both", expand=True, padx=16, pady=(0, 16))
+        tk.Label(
+            card,
+            text="Room to grow: theme, database, and tool settings live here.",
+            font=BODY_FONT,
+            fg=MUTED,
+            bg=PANEL,
+        ).pack(anchor="w", padx=16, pady=16)
+
+
+class PreferencesPanel(tk.Frame):
+    def __init__(self, master: tk.Misc, app: "AbletoolsUI") -> None:
+        super().__init__(master, bg=BG)
+        self.app = app
+        self.show_raw_var = tk.BooleanVar(value=False)
+        self._build()
+
+    def _build(self) -> None:
+        header = tk.Frame(self, bg=BG)
+        header.pack(fill="x", padx=16, pady=(16, 8))
+        tk.Label(header, text="Preferences", font=TITLE_FONT, fg=TEXT, bg=BG).pack(
+            side="left"
+        )
+        ttk.Checkbutton(
+            header,
+            text="Show raw",
+            variable=self.show_raw_var,
+            command=self.refresh,
+            style="Ghost.TButton",
+        ).pack(side="right", padx=(8, 0))
+        ttk.Button(
+            header,
+            text="Refresh",
+            command=self.refresh,
+            style="Accent.TButton",
+        ).pack(side="right")
+
+        self.status_var = tk.StringVar(value="")
+        tk.Label(
+            self,
+            textvariable=self.status_var,
+            font=BODY_FONT,
+            fg=WARN,
+            bg=BG,
+        ).pack(anchor="w", padx=16, pady=(0, 6))
+
+        body = tk.Frame(self, bg=BG)
+        body.pack(fill="both", expand=True, padx=16, pady=(0, 16))
+        body.columnconfigure(0, weight=1)
+        body.columnconfigure(1, weight=1)
+        body.rowconfigure(0, weight=1)
+
+        left = tk.Frame(body, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
+        left.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        left.rowconfigure(1, weight=1)
+        left.columnconfigure(0, weight=1)
+
+        tk.Label(left, text="Sources", font=H2_FONT, fg=TEXT, bg=PANEL).grid(
+            row=0, column=0, sticky="w", padx=12, pady=(10, 6)
+        )
+        self.sources = ttk.Treeview(left, columns=("kind", "source"), show="headings")
+        self.sources.heading("kind", text="Kind")
+        self.sources.heading("source", text="Source")
+        self.sources.column("kind", width=90, anchor="center")
+        self.sources.column("source", width=420)
+        self.sources.grid(row=1, column=0, sticky="nsew", padx=12, pady=(0, 12))
+        self.sources.bind("<<TreeviewSelect>>", self._on_select)
+
+        right = tk.Frame(
+            body, bg=PANEL, highlightbackground=BORDER, highlightthickness=1
+        )
+        right.grid(row=0, column=1, sticky="nsew", padx=(10, 0))
+        right.rowconfigure(1, weight=1)
+        right.columnconfigure(0, weight=1)
+
+        tk.Label(right, text="Parsed JSON", font=H2_FONT, fg=TEXT, bg=PANEL).grid(
+            row=0, column=0, sticky="w", padx=12, pady=(10, 6)
+        )
+        self.payload = tk.Text(
+            right,
+            bg=PANEL,
+            fg=MUTED,
+            insertbackground=TEXT,
+            relief="flat",
+            font=MONO_FONT,
+        )
+        self.payload.grid(row=1, column=0, sticky="nsew", padx=12, pady=(0, 12))
+        self.payload.configure(state="disabled")
+
+    def refresh(self) -> None:
+        self.sources.delete(*self.sources.get_children())
+        self._set_payload("No preferences loaded.")
+        self._set_status("")
+        db_path = self.app.resolve_prefs_db_path()
+        if not db_path or not db_path.exists():
+            self._set_payload("Database not found. Run a scan or prefs refresh.")
+            return
+        try:
+            with sqlite3.connect(db_path) as conn:
+                for row in conn.execute(
+                    "SELECT kind, source, mtime FROM ableton_prefs ORDER BY mtime DESC"
+                ):
+                    self.sources.insert("", "end", values=(row[0], row[1]))
+        except sqlite3.OperationalError as exc:
+            self._set_payload(f"Preferences table missing: {exc}")
+            self._set_status(str(exc))
+            self.app.log_ui_error(f"prefs refresh: {exc}")
+            return
+        except Exception as exc:
+            self._set_payload(f"Failed to load preferences: {exc}")
+            self._set_status(str(exc))
+            self.app.log_ui_error(f"prefs refresh: {exc}")
+            return
+
+        items = self.sources.get_children()
+        if items:
+            self.sources.selection_set(items[0])
+            self._on_select(None)
+
+    def _set_payload(self, text: str) -> None:
+        self.payload.configure(state="normal")
+        self.payload.delete("1.0", "end")
+        self.payload.insert("end", text)
+        self.payload.configure(state="disabled")
+
+    def _set_status(self, text: str) -> None:
+        self.status_var.set(text)
+
+    def _on_select(self, _event: object) -> None:
+        selection = self.sources.selection()
+        if not selection:
+            return
+        values = self.sources.item(selection[0], "values")
+        if not values:
+            return
+        kind, source = values[0], values[1]
+        db_path = self.app.resolve_prefs_db_path()
+        if not db_path or not db_path.exists():
+            self._set_payload("Database not found.")
+            return
+        try:
+            with sqlite3.connect(db_path) as conn:
+                row = conn.execute(
+                    "SELECT payload_json FROM ableton_prefs WHERE kind = ? AND source = ?",
+                    (kind, source),
+                ).fetchone()
+        except Exception as exc:
+            self._set_payload(f"Failed to load payload: {exc}")
+            self._set_status(str(exc))
+            self.app.log_ui_error(f"prefs select: {exc}")
+            return
+        if not row:
+            self._set_payload("No payload found.")
+            return
+        payload_text = row[0]
+        if self.show_raw_var.get():
+            limit = 20000
+            if len(payload_text) > limit:
+                payload_text = (
+                    payload_text[:limit]
+                    + "\n\n... (truncated, enable export if you need full payload)"
+                )
+            self._set_payload(payload_text)
+            return
+        try:
+            payload = json.loads(payload_text)
+        except Exception as exc:
+            self._set_payload(f"Failed to parse JSON: {exc}")
+            self._set_status(str(exc))
+            self.app.log_ui_error(f"prefs parse: {exc}")
+            return
+
+        summary = self._summarize_payload(kind, source, payload)
+        self._set_payload(summary)
+
+    def _summarize_payload(self, kind: str, source: str, payload: dict) -> str:
+        lines = [f"Kind: {kind}", f"Source: {source}"]
+        if isinstance(payload, dict):
+            lines.append(f"Keys: {', '.join(sorted(payload.keys()))}")
+            if "lines" in payload and isinstance(payload["lines"], list):
+                lines.append(f"Lines: {len(payload['lines'])}")
+            if "options" in payload and isinstance(payload["options"], list):
+                lines.append(f"Options: {len(payload['options'])}")
+            if "values" in payload and isinstance(payload["values"], dict):
+                values = payload["values"]
+                lines.append(f"Value keys: {len(values)}")
+
+                key_fields = [
+                    "UserLibraryPath",
+                    "LibraryPath",
+                    "ProjectPath",
+                    "LastProjectPath",
+                    "PacksFolder",
+                    "VstPlugInCustomFolder",
+                    "Vst3PlugInCustomFolder",
+                    "AuPlugInCustomFolder",
+                ]
+                for key in key_fields:
+                    if key in values and values[key]:
+                        first_val = values[key][0]
+                        if self._looks_like_path(first_val):
+                            lines.append(f"{key}: {first_val}")
+
+                hints = []
+                for key in values:
+                    if "Folder" in key or "Path" in key:
+                        for val in values.get(key, []):
+                            if self._looks_like_path(val):
+                                hints.append(val)
+                    if len(hints) >= 5:
+                        break
+                if hints:
+                    lines.append("Example paths:")
+                    lines.extend(f" - {item}" for item in hints[:5])
+
+        return "\n".join(lines)
+
+    def _looks_like_path(self, value: object) -> bool:
+        if not isinstance(value, str):
+            return False
+        if not value or any(ord(ch) < 32 for ch in value):
+            return False
+        if not (value.startswith("/") or value.startswith("~") or value[1:3] == ":\\"):
+            return False
+        path = Path(value).expanduser()
+        return path.exists()
+
+class AbletoolsUI(tk.Tk):
+    def __init__(self) -> None:
+        super().__init__()
+        self.title("Abletools")
+        self.geometry("1080x720")
+        self.configure(bg=BG)
+
+        self.abletools_dir = ABLETOOLS_DIR
+        self.active_root: Optional[Path] = None
+        self.current_scope = "live_recordings"
+
+        self._nav_buttons: dict[str, tk.Button] = {}
+        self._views: dict[str, tk.Frame] = {}
+        self._icon_img: Optional[tk.PhotoImage] = None
+
+        self._style()
+        self._build()
+        self._set_app_icon()
+        self._refresh_prefs_cache()
+        self._init_active_root()
+
+    def _style(self) -> None:
+        style = ttk.Style(self)
+        try:
+            style.theme_use("clam")
+        except Exception:
+            pass
+        style.configure("TLabel", background=BG, foreground=TEXT)
+        style.configure("TFrame", background=BG)
+        style.configure("TLabelFrame", background=PANEL, foreground=TEXT, borderwidth=1)
+        style.configure("TLabelFrame.Label", background=PANEL, foreground=TEXT)
+        style.configure(
+            "TButton",
+            font=BODY_FONT,
+            foreground=TEXT,
+            background=PANEL_ALT,
+            borderwidth=1,
+            focusthickness=1,
+            focuscolor=ACCENT_SOFT,
+        )
+        style.map(
+            "TButton",
+            background=[("active", "#1b2736")],
+            foreground=[("active", TEXT)],
+        )
+        style.configure(
+            "Accent.TButton",
+            foreground="#001014",
+            background=ACCENT,
+            borderwidth=1,
+            focusthickness=1,
+            focuscolor=ACCENT_2,
+            padding=(10, 6),
+        )
+        style.map(
+            "Accent.TButton",
+            background=[("active", ACCENT_2)],
+            foreground=[("active", "#001014")],
+        )
+        style.configure(
+            "Ghost.TButton",
+            foreground=TEXT,
+            background=BG_NAV,
+            borderwidth=1,
+            focusthickness=1,
+            focuscolor=ACCENT_SOFT,
+            padding=(10, 6),
+        )
+        style.map(
+            "Ghost.TButton",
+            background=[("active", "#0f1a26")],
+            foreground=[("active", TEXT)],
+        )
+        style.configure(
+            "Nav.TButton",
+            foreground=MUTED,
+            background=BG_NAV,
+            borderwidth=1,
+            focusthickness=1,
+            focuscolor=ACCENT_SOFT,
+            padding=(6, 10),
+        )
+        style.map(
+            "Nav.TButton",
+            background=[("active", "#0f1a26")],
+            foreground=[("active", TEXT)],
+        )
+        style.configure(
+            "NavActive.TButton",
+            foreground="#001014",
+            background=ACCENT_2,
+            borderwidth=1,
+            focusthickness=1,
+            focuscolor=ACCENT,
+            padding=(6, 10),
+        )
+        style.map(
+            "NavActive.TButton",
+            background=[("active", ACCENT)],
+            foreground=[("active", "#001014")],
+        )
+        style.configure("TCheckbutton", background=PANEL, foreground=TEXT)
+        style.map(
+            "TCheckbutton",
+            foreground=[("active", TEXT)],
+            background=[("active", PANEL)],
+        )
+
+    def _build(self) -> None:
+        self.grid_rowconfigure(0, weight=1)
+        self.grid_columnconfigure(1, weight=1)
+
+        nav = tk.Frame(self, bg=BG_NAV, width=84)
+        nav.grid(row=0, column=0, sticky="ns")
+        nav.grid_propagate(False)
+
+        main = tk.Frame(self, bg=BG)
+        main.grid(row=0, column=1, sticky="nsew")
+        main.grid_rowconfigure(1, weight=1)
+        main.grid_columnconfigure(0, weight=1)
+
+        self._build_nav(nav)
+        self._build_topbar(main)
+
+        content = tk.Frame(main, bg=BG)
+        content.grid(row=1, column=0, sticky="nsew")
+        content.grid_rowconfigure(0, weight=1)
+        content.grid_columnconfigure(0, weight=1)
+
+        self._views["dashboard"] = DashboardPanel(content, self)
+        self._views["scan"] = ScanView(content, self)
+        self._views["catalog"] = CatalogPanel(content, self)
+        self._views["tools"] = RamifyPanel(content)
+        self._views["preferences"] = PreferencesPanel(content, self)
+        self._views["settings"] = SettingsPanel(content)
+
+        for view in self._views.values():
+            view.grid(row=0, column=0, sticky="nsew")
+
+        self.show_view("dashboard")
+
+    def _build_nav(self, nav: tk.Frame) -> None:
+        logo = self._load_nav_logo(target_width=96)
+        if logo is not None:
+            tk.Label(nav, image=logo, bg=BG_NAV).pack(pady=(14, 12))
+        else:
+            tk.Label(
+                nav, text="A", font=("Menlo", 18, "bold"), fg=ACCENT, bg=BG_NAV
+            ).pack(pady=(16, 4))
+            tk.Label(
+                nav,
+                text="core",
+                font=("Menlo", 9, "bold"),
+                fg=ACCENT_2,
+                bg=BG_NAV,
+            ).pack(pady=(0, 12))
+
+        tk.Frame(nav, bg=ACCENT_SOFT, height=2).pack(fill="x", padx=10, pady=(0, 10))
+
+        for key, label in [
+            ("dashboard", "Dash"),
+            ("scan", "Scan"),
+            ("catalog", "Catalog"),
+            ("tools", "Tools"),
+            ("preferences", "Prefs"),
+            ("settings", "Settings"),
+        ]:
+            btn = ttk.Button(
+                nav,
+                text=label.upper(),
+                command=lambda k=key: self.show_view(k),
+                style="Nav.TButton",
+            )
+            btn.pack(fill="x", padx=8, pady=4)
+            self._nav_buttons[key] = btn
+
+    def _build_topbar(self, main: tk.Frame) -> None:
+        top = tk.Frame(main, bg=BG, highlightbackground=BORDER, highlightthickness=1)
+        top.grid(row=0, column=0, sticky="ew")
+        top.grid_columnconfigure(1, weight=1)
+
+        tk.Label(top, text="Abletools", font=TITLE_FONT, fg=TEXT, bg=BG).grid(
+            row=0, column=0, sticky="w", padx=16, pady=10
+        )
+
+        self.active_root_var = tk.StringVar(value="No active root")
+        tk.Label(top, textvariable=self.active_root_var, font=BODY_FONT, fg=MUTED, bg=BG).grid(
+            row=0, column=1, sticky="w"
+        )
+
+        ttk.Button(
+            top,
+            text="Open DB",
+            command=self._open_db_location,
+            style="Ghost.TButton",
+        ).grid(row=0, column=2, padx=8)
+        ttk.Button(
+            top,
+            text="Run Scan",
+            command=lambda: self.show_view("scan"),
+            style="Accent.TButton",
+        ).grid(row=0, column=3, padx=(0, 16))
+
+        tk.Frame(top, bg=ACCENT_SOFT, height=2).grid(
+            row=1, column=0, columnspan=4, sticky="ew"
+        )
+
+    def _set_app_icon(self) -> None:
+        icon_path = ABLETOOLS_DIR / "resources" / "abletools_icon.png"
+        fallback_path = (
+            ABLETOOLS_DIR
+            / "resources"
+            / "ChatGPT Image Jan 18, 2026, 02_19_59 AM.png"
+        )
+        path = icon_path if icon_path.exists() else fallback_path
+        if not path.exists():
+            return
+        try:
+            self._icon_img = tk.PhotoImage(file=str(path))
+            self.iconphoto(True, self._icon_img)
+        except Exception:
+            pass
+
+    def _load_logo(self, target_width: int) -> Optional[tk.PhotoImage]:
+        if not hasattr(self, "_logo_cache"):
+            self._logo_cache = {}
+        cache_key = f"w{target_width}"
+        if cache_key in self._logo_cache:
+            return self._logo_cache[cache_key]
+
+        png_path = ABLETOOLS_DIR / "resources" / "abletools_logo.png"
+        svg_path = ABLETOOLS_DIR / "resources" / "abletools_logo.svg"
+        img = None
+
+        if png_path.exists():
+            img = tk.PhotoImage(file=str(png_path))
+        elif svg_path.exists():
+            try:
+                import cairosvg  # type: ignore
+
+                png_bytes = cairosvg.svg2png(bytestring=svg_path.read_bytes())
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
+                    tmp.write(png_bytes)
+                    tmp.flush()
+                    img = tk.PhotoImage(file=tmp.name)
+            except Exception:
+                img = None
+
+        if img is None and png_path.exists():
+            img = tk.PhotoImage(file=str(png_path))
+
+        if img is None:
+            return None
+
+        width = max(1, img.width())
+        scale = max(1, width // target_width)
+        if scale > 1:
+            img = img.subsample(scale, scale)
+
+        self._logo_cache[cache_key] = img
+        return img
+
+    def _load_nav_logo(self, target_width: int) -> Optional[tk.PhotoImage]:
+        if not hasattr(self, "_logo_cache"):
+            self._logo_cache = {}
+        cache_key = f"nav{target_width}"
+        if cache_key in self._logo_cache:
+            return self._logo_cache[cache_key]
+
+        mark_path = ABLETOOLS_DIR / "resources" / "abletools_mark.png"
+        if not mark_path.exists():
+            return None
+        img = tk.PhotoImage(file=str(mark_path))
+
+        width = max(1, img.width())
+        scale = max(1, width // target_width)
+        if scale > 1:
+            img = img.subsample(scale, scale)
+
+        self._logo_cache[cache_key] = img
+        return img
+
+    def show_view(self, name: str) -> None:
+        view = self._views.get(name)
+        if not view:
+            return
+        view.tkraise()
+        for key, btn in self._nav_buttons.items():
+            if key == name:
+                btn.configure(style="NavActive.TButton")
+            else:
+                btn.configure(style="Nav.TButton")
+
+        if name == "dashboard":
+            self.refresh_dashboard()
+        elif name == "catalog":
+            catalog = self._views.get("catalog")
+            if isinstance(catalog, CatalogPanel):
+                catalog.refresh()
+        elif name == "preferences":
+            prefs = self._views.get("preferences")
+            if isinstance(prefs, PreferencesPanel):
+                try:
+                    prefs.refresh()
+                except Exception as exc:
+                    messagebox.showerror("Preferences", f"Failed to load: {exc}")
+
+    def refresh_dashboard(self) -> None:
+        dashboard = self._views.get("dashboard")
+        if isinstance(dashboard, DashboardPanel):
+            dashboard.refresh()
+
+    def scan_script_path(self) -> Path:
+        return self.abletools_dir / "abletools_scan.py"
+
+    def catalog_dir(self) -> Path:
+        return self.abletools_dir / ".abletools_catalog"
+
+    def default_scan_root(self) -> Path:
+        cache_dir = self.catalog_dir()
+        suggested = suggest_scan_root(cache_dir)
+        if suggested:
+            return suggested
+        return self.abletools_dir.parent
+
+    def user_library_root(self) -> Optional[Path]:
+        cache_dir = self.catalog_dir()
+        key_paths = get_key_paths(cache_dir)
+        for key in ("UserLibraryPath", "LibraryPath"):
+            for val in key_paths.get(key, []):
+                path = Path(val).expanduser()
+                if path.exists() and path.is_dir():
+                    return path
+        return None
+
+    def preferences_root(self) -> Optional[Path]:
+        cache_dir = self.catalog_dir()
+        return get_preferences_folder(cache_dir)
+
+    def set_active_root(self, root: Path) -> None:
+        self.active_root = root
+        self.active_root_var.set(f"Active root: {root}")
+
+    def set_current_scope(self, scope: str) -> None:
+        if scope in {"live_recordings", "user_library", "preferences", "all"}:
+            self.current_scope = scope
+
+    def resolve_db_path(self) -> Optional[Path]:
+        if self.active_root:
+            return self.active_root / ".abletools_catalog" / "abletools_catalog.sqlite"
+        return self.catalog_dir() / "abletools_catalog.sqlite"
+
+    def resolve_catalog_db_path(self) -> Optional[Path]:
+        return self.catalog_dir() / "abletools_catalog.sqlite"
+
+    def resolve_prefs_db_path(self) -> Optional[Path]:
+        return self.catalog_dir() / "abletools_catalog.sqlite"
+
+    def resolve_scan_summary(self) -> Optional[Path]:
+        if self.active_root:
+            return self.active_root / ".abletools_catalog" / "scan_summary.json"
+        fallback = self.abletools_dir / ".abletools_catalog" / "scan_summary.json"
+        return fallback if fallback.exists() else None
+
+    def load_catalog_stats(self) -> CatalogStats:
+        db_path = self.resolve_catalog_db_path()
+        stats = CatalogStats(last_scan=_now_iso())
+        if not db_path or not db_path.exists():
+            return stats
+        try:
+            with sqlite3.connect(db_path) as conn:
+                stats.file_count = conn.execute("SELECT COUNT(*) FROM file_index").fetchone()[0]
+                stats.doc_count = conn.execute("SELECT COUNT(*) FROM ableton_docs").fetchone()[0]
+                stats.refs_count = conn.execute("SELECT COUNT(*) FROM refs_graph").fetchone()[0]
+                stats.missing_refs = conn.execute(
+                    "SELECT COUNT(*) FROM refs_graph WHERE ref_exists = 0"
+                ).fetchone()[0]
+        except Exception:
+            return stats
+        return stats
+
+    def _open_db_location(self) -> None:
+        db_path = self.resolve_catalog_db_path()
+        if not db_path or not db_path.exists():
+            messagebox.showinfo("Database", "No database found yet.")
+            return
+        folder = db_path.parent
+        try:
+            self.tk.call("exec", "open", str(folder))
+        except Exception:
+            messagebox.showwarning("Could not open folder", str(folder))
+
+    def _refresh_prefs_cache(self) -> None:
+        catalog_dir = self.abletools_dir / ".abletools_catalog"
+        db_script = self.abletools_dir / "abletools_catalog_db.py"
+        if not db_script.exists():
+            return
+        catalog_dir.mkdir(parents=True, exist_ok=True)
+        db_path = self.resolve_prefs_db_path()
+        cmd = [
+            sys.executable,
+            str(db_script),
+            str(catalog_dir),
+            "--append",
+            "--prefs-only",
+            "--db",
+            str(db_path),
+        ]
+        try:
+            subprocess.run(
+                cmd,
+                cwd=str(self.abletools_dir),
+                capture_output=True,
+                text=True,
+            )
+        except Exception:
+            pass
+
+    def ensure_catalog_db(self) -> None:
+        catalog_dir = self.catalog_dir()
+        db_path = self.resolve_catalog_db_path()
+        if not db_path:
+            return
+        if db_path.exists():
+            return
+        db_script = self.abletools_dir / "abletools_catalog_db.py"
+        if not db_script.exists():
+            return
+        catalog_dir.mkdir(parents=True, exist_ok=True)
+        cmd = [
+            sys.executable,
+            str(db_script),
+            str(catalog_dir),
+            "--append",
+            "--prefs-only",
+            "--db",
+            str(db_path),
+        ]
+        try:
+            subprocess.run(
+                cmd,
+                cwd=str(self.abletools_dir),
+                capture_output=True,
+                text=True,
+            )
+        except Exception as exc:
+            self.log_ui_error(f"ensure_catalog_db: {exc}")
+
+    def _init_active_root(self) -> None:
+        if self.active_root is None:
+            self.set_active_root(self.default_scan_root())
+
+    def log_ui_error(self, message: str) -> None:
+        log_path = self.abletools_dir / ".abletools_catalog" / "ui_errors.log"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with log_path.open("a", encoding="utf-8") as handle:
+                handle.write(f"{datetime.now().isoformat()} {message}\n")
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":
