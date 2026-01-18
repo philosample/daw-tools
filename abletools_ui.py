@@ -837,7 +837,9 @@ class CatalogPanel(tk.Frame):
         self.pref_summary.grid_remove()
         self.tree_frame.grid()
         clauses = []
+        file_clauses = []
         params = []
+        file_params = []
         if term:
             if scope == "preferences":
                 clauses.append("(source LIKE ? OR kind LIKE ?)")
@@ -845,19 +847,26 @@ class CatalogPanel(tk.Frame):
             else:
                 clauses.append("path LIKE ?")
                 params.append(f"%{term}%")
+                file_clauses.append("path LIKE ?")
+                file_params.append(f"%{term}%")
         if self.filter_missing.get():
             clauses.append("missing_refs = 1")
         if self.filter_devices.get():
             clauses.append("has_devices = 1")
         if self.filter_samples.get():
             clauses.append("has_samples = 1")
-        if not self.show_backups.get():
+        if not self.show_backups.get() and scope != "preferences":
             clauses.append(
                 "lower(path) NOT LIKE ? AND lower(path) NOT LIKE ? AND lower(path) NOT LIKE ?"
             )
             params.extend(["%backup%", "%backups%", "%_backup%"])
+            file_clauses.append(
+                "lower(path) NOT LIKE ? AND lower(path) NOT LIKE ? AND lower(path) NOT LIKE ?"
+            )
+            file_params.extend(["%backup%", "%backups%", "%_backup%"])
 
         where_sql = " AND ".join(clauses) if clauses else "1=1"
+        file_where_sql = " AND ".join(file_clauses) if file_clauses else "1=1"
 
         if scope == "preferences":
             self.tree_frame.grid_remove()
@@ -879,7 +888,7 @@ class CatalogPanel(tk.Frame):
                 "SELECT path, ext, size, mtime, NULL, NULL, 0, 0, 0, mtime, 'user_library' "
                 "FROM file_index_user_library "
                 "WHERE kind != 'ableton_doc' "
-                f"AND {where_sql} "
+                f"AND {file_where_sql} "
                 "ORDER BY mtime DESC LIMIT 500"
             )
         elif scope == "all":
@@ -903,7 +912,8 @@ class CatalogPanel(tk.Frame):
         try:
             with sqlite3.connect(db_path) as conn:
                 self._last_rows = []
-                for row in conn.execute(sql, params):
+                run_params = params if scope != "user_library" else params + file_params
+                for row in conn.execute(sql, run_params):
                     if scope == "preferences":
                         values = {
                             "kind": row[0],
@@ -2530,28 +2540,39 @@ class AbletoolsUI(tk.Tk):
             "--verbose",
         ]
         self._log_event("SCAN", f"targeted: {cmd}")
-        try:
-            proc = subprocess.run(
-                cmd,
-                cwd=str(self.abletools_dir),
-                capture_output=True,
-                text=True,
-            )
-        except Exception as exc:
-            messagebox.showerror("Scan Selected", f"Failed to run scan:\n{exc}")
-            return
-        if proc.returncode != 0:
-            messagebox.showerror("Scan Selected", proc.stderr.strip() or "Scan failed.")
-            return
-        self.refresh_catalog_db()
-        self.refresh_dashboard()
-        messagebox.showinfo("Scan Selected", "Targeted scan completed.")
+        def _run() -> None:
+            try:
+                proc = subprocess.run(
+                    cmd,
+                    cwd=str(self.abletools_dir),
+                    capture_output=True,
+                    text=True,
+                )
+            except Exception as exc:
+                self._log_event("ERROR", f"targeted scan: {exc}")
+                self.after(0, messagebox.showerror, "Scan Selected", f"Failed:\n{exc}")
+                return
+            if proc.returncode != 0:
+                self._log_event("ERROR", f"targeted scan: {proc.stderr.strip()}")
+                self.after(
+                    0,
+                    messagebox.showerror,
+                    "Scan Selected",
+                    proc.stderr.strip() or "Scan failed.",
+                )
+                return
+            self.after(0, self.refresh_catalog_db)
+            self.after(0, self.refresh_dashboard)
+            self.after(0, messagebox.showinfo, "Scan Selected", "Targeted scan completed.")
+
+        threading.Thread(target=_run, daemon=True).start()
 
     def audit_zero_tracks(self) -> list[str]:
         db_path = self.resolve_catalog_db_path()
         if not db_path or not db_path.exists():
             return []
         issues: list[str] = []
+        log_path = self.catalog_dir() / "audit_log.txt"
         try:
             with sqlite3.connect(db_path) as conn:
                 conn.row_factory = sqlite3.Row
@@ -2572,9 +2593,18 @@ class AbletoolsUI(tk.Tk):
                         reason = "no track tags found"
                         if row["error"]:
                             reason = f"parse error: {row['error']}"
-                        issues.append(
-                            f"{scope}: {row['path']} (clips={row['clips_total']}, size={row['size']}, {reason})"
+                        entry = (
+                            f"{scope}: {row['path']} "
+                            f"(tracks={row['tracks_total']}, clips={row['clips_total']}, "
+                            f"size={row['size']}, {reason})"
                         )
+                        issues.append(entry)
+                        self._log_event("AUDIT", entry)
+            if issues:
+                with log_path.open("a", encoding="utf-8") as handle:
+                    handle.write(f"{datetime.now().isoformat()} audit_zero_tracks\n")
+                    for entry in issues:
+                        handle.write(f"{entry}\n")
         except Exception as exc:
             self._log_event("ERROR", f"audit_zero_tracks: {exc}")
         return issues
