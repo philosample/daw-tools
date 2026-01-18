@@ -10,7 +10,9 @@ import os
 import re
 import sys
 import time
+from collections import Counter
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Iterable, Optional
 
@@ -61,6 +63,60 @@ RE_XML_ATTR_NAME = re.compile(
 )
 
 
+def _now_iso_local() -> str:
+    try:
+        return datetime.now().astimezone().isoformat(timespec="seconds")
+    except Exception:
+        return datetime.now().isoformat(timespec="seconds")
+
+
+def _safe_rel(root: Path, p: Path) -> str:
+    try:
+        return str(p.resolve().relative_to(root.resolve()))
+    except Exception:
+        return str(p)
+
+
+def write_scan_summary(
+    *,
+    out_dir: Path,
+    root: Path,
+    started_ts: int,
+    finished_ts: int,
+    scanned: int,
+    indexed: int,
+    parsed_docs: int,
+    skipped: int,
+    by_ext: Counter[str],
+    ableton_sets: int,
+    refs_total: int,
+    refs_missing: int,
+    top_dirs: Counter[str],
+) -> Path:
+    out = out_dir / "scan_summary.json"
+    payload = {
+        "root": str(root),
+        "out": str(out_dir),
+        "started_at": started_ts,
+        "finished_at": finished_ts,
+        "generated_at": _now_iso_local(),
+        "duration_sec": float(finished_ts - started_ts),
+        "files_scanned": int(scanned),
+        "files_indexed": int(indexed),
+        "ableton_docs_parsed": int(parsed_docs),
+        "files_skipped": int(skipped),
+        "ableton_sets": int(ableton_sets),
+        "by_ext": {k: int(v) for k, v in by_ext.most_common()},
+        "refs_total": int(refs_total),
+        "refs_missing": int(refs_missing),
+        "top_dirs": [{"path": k, "count": int(v)} for k, v in top_dirs.most_common(10)],
+    }
+    out.write_text(
+        json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
+    return out
+
+
 @dataclass
 class ScanRecord:
     path: str
@@ -99,7 +155,9 @@ def read_text_maybe_gzip(path: Path, max_bytes: int = 50_000_000) -> str:
         with gzip.GzipFile(fileobj=io.BytesIO(raw)) as gz:
             out = gz.read(max_bytes + 1)
             if len(out) > max_bytes:
-                raise RuntimeError(f"Decompressed data exceeds max_bytes ({max_bytes}) for {path}")
+                raise RuntimeError(
+                    f"Decompressed data exceeds max_bytes ({max_bytes}) for {path}"
+                )
             return out.decode("utf-8", errors="replace")
 
     # plain text fallback
@@ -202,13 +260,33 @@ def parse_ableton_doc(text: str) -> dict:
 
 
 def main(argv: list[str]) -> int:
-    ap = argparse.ArgumentParser(prog="abletools-scan", description="Scan folders for Ableton items and catalog to JSONL.")
+    ap = argparse.ArgumentParser(
+        prog="abletools-scan",
+        description="Scan folders for Ableton items and catalog to JSONL.",
+    )
     ap.add_argument("root", help="Root folder to scan (recursive).")
     ap.add_argument("--out", default=None, help="Output folder (default: <root>/.abletools_catalog)")
-    ap.add_argument("--include-media", action="store_true", help="Also index media files (wav/aif/flac/mp3/etc.)")
-    ap.add_argument("--hash", action="store_true", help="Compute sha1 for indexed files (slower, but better dedupe)")
-    ap.add_argument("--incremental", action="store_true", help="Skip unchanged files based on size+mtime (and hash if enabled)")
-    ap.add_argument("--workers", type=int, default=1, help="Reserved for future parallel scan (MVP runs single-thread).")
+    ap.add_argument(
+        "--include-media",
+        action="store_true",
+        help="Also index media files (wav/aif/flac/mp3/etc.)",
+    )
+    ap.add_argument(
+        "--hash",
+        action="store_true",
+        help="Compute sha1 for indexed files (slower, but better dedupe)",
+    )
+    ap.add_argument(
+        "--incremental",
+        action="store_true",
+        help="Skip unchanged files based on size+mtime (and hash if enabled)",
+    )
+    ap.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Reserved for future parallel scan (MVP runs single-thread).",
+    )
     ap.add_argument("--verbose", action="store_true", help="Verbose logs.")
     args = ap.parse_args(argv)
 
@@ -237,6 +315,11 @@ def main(argv: list[str]) -> int:
     skipped = 0
 
     started = now_ts()
+    by_ext: Counter[str] = Counter()
+    top_dirs: Counter[str] = Counter()
+    ableton_sets = 0
+    refs_total = 0
+    refs_missing = 0
 
     for p in iter_files(root):
         scanned += 1
@@ -254,11 +337,22 @@ def main(argv: list[str]) -> int:
         mtime = int(st.st_mtime)
 
         prev = state.get(rel)
+        current_sha1: Optional[str] = None
+        sha1_error: Optional[str] = None
         if args.incremental and prev:
-            if prev.get("size") == size and prev.get("mtime") == mtime and (not args.hash or prev.get("sha1")):
-                # If hashing enabled and we have sha1 recorded, treat unchanged.
-                skipped += 1
-                continue
+            if prev.get("size") == size and prev.get("mtime") == mtime:
+                if args.hash and prev.get("sha1"):
+                    try:
+                        current_sha1 = sha1_file(p)
+                    except Exception as e:
+                        sha1_error = str(e)
+                    else:
+                        if current_sha1 == prev.get("sha1"):
+                            skipped += 1
+                            continue
+                elif not args.hash:
+                    skipped += 1
+                    continue
 
         rec = {
             "path": rel,
@@ -270,13 +364,32 @@ def main(argv: list[str]) -> int:
         }
 
         if args.hash:
-            try:
-                rec["sha1"] = sha1_file(p)
-            except Exception as e:
-                rec["sha1_error"] = str(e)
+            if current_sha1 is None and sha1_error is None:
+                try:
+                    current_sha1 = sha1_file(p)
+                except Exception as e:
+                    sha1_error = str(e)
+            if current_sha1 is not None:
+                rec["sha1"] = current_sha1
+            if sha1_error:
+                rec["sha1_error"] = sha1_error
 
         write_jsonl(file_index_path, rec)
         indexed += 1
+
+        by_ext[ext] += 1
+        if ext in ABLETON_DOC_EXTS:
+            ableton_sets += 1
+
+        rel_to_root = _safe_rel(root, p)
+        parts = rel_to_root.split("/")
+        if len(parts) >= 2:
+            bucket = "/".join(parts[:2])
+        elif parts:
+            bucket = parts[0]
+        else:
+            bucket = rel_to_root
+        top_dirs[bucket] += 1
 
         # Update state
         state[rel] = {"size": size, "mtime": mtime}
@@ -301,6 +414,20 @@ def main(argv: list[str]) -> int:
 
                 # Emit reference edges
                 for ref in summary.get("sample_refs", []):
+                    ref_path = Path(ref)
+                    exists = False
+                    try:
+                        if ref_path.is_absolute():
+                            exists = ref_path.exists()
+                        else:
+                            exists = (root / ref_path).exists()
+                    except Exception:
+                        exists = False
+
+                    refs_total += 1
+                    if not exists:
+                        refs_missing += 1
+
                     write_jsonl(
                         refs_path,
                         {
@@ -308,6 +435,7 @@ def main(argv: list[str]) -> int:
                             "src_kind": ext.lstrip("."),
                             "ref_kind": "sample",
                             "ref_path": ref,
+                            "exists": bool(exists),
                             "scanned_at": started,
                         },
                     )
@@ -325,11 +453,35 @@ def main(argv: list[str]) -> int:
                 )
 
         if args.verbose and indexed % 250 == 0:
-            print(f"[scan] scanned={scanned} indexed={indexed} parsed_docs={parsed_docs} skipped={skipped}")
+            print(
+                f"[scan] scanned={scanned} indexed={indexed} parsed_docs={parsed_docs} skipped={skipped}"
+            )
 
     save_state(state_path, state)
 
     finished = now_ts()
+
+    # Write machine-readable scan summary for the UI
+    try:
+        write_scan_summary(
+            out_dir=out_dir,
+            root=root,
+            started_ts=started,
+            finished_ts=finished,
+            scanned=scanned,
+            indexed=indexed,
+            parsed_docs=parsed_docs,
+            skipped=skipped,
+            by_ext=by_ext,
+            ableton_sets=ableton_sets,
+            refs_total=refs_total,
+            refs_missing=refs_missing,
+            top_dirs=top_dirs,
+        )
+    except Exception as e:
+        # Don't fail the scan if summary writing fails
+        print(f"WARN: failed to write scan_summary.json: {e}", file=sys.stderr)
+
     print(
         f"OK: root={root}\n"
         f"out={out_dir}\n"

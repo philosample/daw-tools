@@ -1,113 +1,20 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import gzip
-import os
 import queue
-import shutil
 import subprocess
 import sys
 import threading
 import traceback
-import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
+from ramify_core import iter_targets, process_file
 
-SUPPORTED_EXTS = {".als", ".alc"}
+
 ABLETOOLS_DIR = Path(__file__).resolve().parent
-
-
-def is_gzip(data: bytes) -> bool:
-    return len(data) >= 2 and data[0] == 0x1F and data[1] == 0x8B
-
-
-def read_als_like(path: Path) -> bytes:
-    raw = path.read_bytes()
-    return gzip.decompress(raw) if is_gzip(raw) else raw
-
-
-def write_als_like(path: Path, xml_bytes: bytes) -> None:
-    path.write_bytes(gzip.compress(xml_bytes))
-
-
-def ensure_backup(path: Path) -> Path:
-    bak = path.with_suffix(path.suffix + ".bak")
-    if not bak.exists():
-        shutil.copy2(path, bak)
-    return bak
-
-
-def iter_targets(root: Path, recursive: bool):
-    if root.is_file():
-        if root.suffix.lower() in SUPPORTED_EXTS:
-            yield root
-        return
-    if root.is_dir():
-        if recursive:
-            yield from (
-                p
-                for p in root.rglob("*")
-                if p.is_file() and p.suffix.lower() in SUPPORTED_EXTS
-            )
-        else:
-            yield from (
-                p
-                for p in root.glob("*")
-                if p.is_file() and p.suffix.lower() in SUPPORTED_EXTS
-            )
-        return
-    raise FileNotFoundError(f"Not found: {root}")
-
-
-def flip_ram_flags(xml_bytes: bytes):
-    """
-    Flip <Ram Value="..."> under <AudioClip> to true.
-    Returns (new_xml_bytes, audio_clips_seen, ram_flips_done)
-    """
-    root = ET.fromstring(xml_bytes)
-
-    def local(tag: str) -> str:
-        return tag.split("}", 1)[-1] if "}" in tag else tag
-
-    audio_clips_seen = 0
-    flips = 0
-
-    for elem in root.iter():
-        if local(elem.tag) != "AudioClip":
-            continue
-        audio_clips_seen += 1
-        for sub in elem.iter():
-            if local(sub.tag) != "Ram":
-                continue
-            v = sub.attrib.get("Value")
-            if v is None:
-                continue
-            if v.lower() != "true":
-                sub.set("Value", "true")
-                flips += 1
-
-    new_xml = ET.tostring(root, encoding="utf-8", method="xml")
-    return new_xml, audio_clips_seen, flips
-
-
-def process_one(path: Path, in_place: bool, dry_run: bool):
-    xml = read_als_like(path)
-    new_xml, audio_seen, flips = flip_ram_flags(xml)
-
-    if flips == 0 or dry_run:
-        return audio_seen, flips, None  # None = no write
-
-    if in_place:
-        ensure_backup(path)
-        write_als_like(path, new_xml)
-        return audio_seen, flips, str(path)
-    else:
-        out = path.with_name(path.stem + ".ram" + path.suffix)
-        write_als_like(out, new_xml)
-        return audio_seen, flips, str(out)
 
 
 class ScanPanel(ttk.LabelFrame):
@@ -236,7 +143,11 @@ class ScanPanel(ttk.LabelFrame):
                 if self._stop_requested:
                     break
 
-            rc = self._proc.wait(timeout=5)
+            try:
+                rc = self._proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self._proc.kill()
+                rc = self._proc.wait(timeout=5)
             if self._stop_requested:
                 self._enqueue("Scan cancelled.")
                 self.status_var.set("Cancelled")
@@ -461,7 +372,7 @@ class AbletoolsUI(tk.Tk):
                 for f in iter_targets(target, recursive):
                     total_files += 1
                     try:
-                        audio_seen, flips, wrote = process_one(f, inplace, dry)
+                        audio_seen, flips, wrote = process_file(f, inplace, dry)
                         total_audio += audio_seen
                         total_flips += flips
                         action = "DRY" if dry else ("INPLACE" if inplace else "OUT")
