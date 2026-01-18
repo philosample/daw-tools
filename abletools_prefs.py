@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+import os
+import plistlib
 import re
 import time
 from pathlib import Path
 from typing import Any
 
 CACHE_FILENAME = "prefs_cache.json"
+PLUGIN_EXTS = {".component", ".vst", ".vst3"}
 
 
 def _prefs_root() -> Path:
@@ -112,6 +115,17 @@ def get_key_paths(cache_dir: Path) -> dict[str, list[str]]:
     return {k: values.get(k, []) for k in keys if values.get(k)}
 
 
+def _default_plugin_dirs() -> list[Path]:
+    return [
+        Path("/Library/Audio/Plug-Ins/Components"),
+        Path("/Library/Audio/Plug-Ins/VST"),
+        Path("/Library/Audio/Plug-Ins/VST3"),
+        Path.home() / "Library" / "Audio" / "Plug-Ins" / "Components",
+        Path.home() / "Library" / "Audio" / "Plug-Ins" / "VST",
+        Path.home() / "Library" / "Audio" / "Plug-Ins" / "VST3",
+    ]
+
+
 def _parse_kv(line: str) -> tuple[str | None, str | None]:
     if "=" in line:
         key, value = line.split("=", 1)
@@ -189,6 +203,76 @@ def load_prefs_payloads(cache_dir: Path) -> list[dict[str, Any]]:
         )
 
     return payloads
+
+
+def _scan_plugin_dir(path: Path) -> list[dict[str, Any]]:
+    plugins: list[dict[str, Any]] = []
+    if not path.exists() or not path.is_dir():
+        return plugins
+    try:
+        with os.scandir(path) as it:
+            for entry in it:
+                p = Path(entry.path)
+                if p.suffix.lower() not in PLUGIN_EXTS:
+                    continue
+                if not entry.is_dir(follow_symlinks=False):
+                    continue
+                info_plist = p / "Contents" / "Info.plist"
+                meta: dict[str, Any] = {
+                    "path": str(p),
+                    "format": p.suffix.lower().lstrip("."),
+                    "name": p.stem,
+                }
+                if info_plist.exists():
+                    try:
+                        data = plistlib.loads(info_plist.read_bytes())
+                        meta.update(
+                            {
+                                "name": data.get("CFBundleName") or meta["name"],
+                                "bundle_id": data.get("CFBundleIdentifier"),
+                                "version": data.get("CFBundleShortVersionString")
+                                or data.get("CFBundleVersion"),
+                                "vendor": data.get("CFBundleGetInfoString"),
+                            }
+                        )
+                    except Exception:
+                        pass
+                plugins.append(meta)
+    except OSError:
+        return plugins
+    return plugins
+
+
+def load_plugin_payloads(cache_dir: Path) -> list[dict[str, Any]]:
+    cache = discover_preferences(cache_dir)
+    prefs_path = Path(cache.get("prefs_path", "")) if cache.get("prefs_path") else None
+    plugin_dirs = set(_default_plugin_dirs())
+    if prefs_path and prefs_path.exists():
+        data = parse_preferences(prefs_path)
+        values = data.get("values", {})
+        for key in (
+            "VstPlugInCustomFolder",
+            "Vst3PlugInCustomFolder",
+            "AuPlugInCustomFolder",
+        ):
+            for val in values.get(key, []):
+                if not val:
+                    continue
+                plugin_dirs.add(Path(val).expanduser())
+
+    plugins: list[dict[str, Any]] = []
+    for p in sorted(plugin_dirs):
+        plugins.extend(_scan_plugin_dir(p))
+
+    if not plugins:
+        return []
+    return [
+        {
+            "scope": "preferences",
+            "scanned_at": int(time.time()),
+            "plugins": plugins,
+        }
+    ]
 
 
 def suggest_scan_root(cache_dir: Path) -> Path | None:

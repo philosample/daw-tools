@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterable
 
-from abletools_prefs import load_prefs_payloads
+from abletools_prefs import load_prefs_payloads, load_plugin_payloads
 
 SCOPES = ("live_recordings", "user_library", "preferences")
 
@@ -19,6 +19,7 @@ def scope_suffix(scope: str) -> str:
 
 def scoped_name(base: str, scope: str) -> str:
     return f"{base}{scope_suffix(scope)}"
+
 
 @dataclass
 class CatalogPaths:
@@ -89,6 +90,7 @@ def create_schema(conn: sqlite3.Connection) -> None:
             f"""
             CREATE TABLE IF NOT EXISTS file_index{suffix} (
                 path TEXT PRIMARY KEY,
+                path_hash TEXT,
                 ext TEXT NOT NULL,
                 size INTEGER NOT NULL,
                 mtime INTEGER NOT NULL,
@@ -107,7 +109,12 @@ def create_schema(conn: sqlite3.Connection) -> None:
                 kind TEXT NOT NULL,
                 scanned_at INTEGER NOT NULL,
                 sha1 TEXT,
-                sha1_error TEXT
+                sha1_error TEXT,
+                audio_duration REAL,
+                audio_sample_rate INTEGER,
+                audio_channels INTEGER,
+                audio_bit_depth INTEGER,
+                audio_codec TEXT
             );
 
             CREATE TABLE IF NOT EXISTS ableton_docs{suffix} (
@@ -123,7 +130,8 @@ def create_schema(conn: sqlite3.Connection) -> None:
                 tracks_total INTEGER,
                 clips_audio INTEGER,
                 clips_midi INTEGER,
-                clips_total INTEGER
+                clips_total INTEGER,
+                tempo REAL
             );
 
             CREATE TABLE IF NOT EXISTS doc_sample_refs{suffix} (
@@ -135,6 +143,12 @@ def create_schema(conn: sqlite3.Connection) -> None:
             CREATE TABLE IF NOT EXISTS doc_device_hints{suffix} (
                 doc_path TEXT NOT NULL,
                 device_hint TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS doc_device_sequence{suffix} (
+                doc_path TEXT NOT NULL,
+                ord INTEGER NOT NULL,
+                device_name TEXT NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS refs_graph{suffix} (
@@ -158,18 +172,67 @@ def create_schema(conn: sqlite3.Connection) -> None:
             CREATE INDEX IF NOT EXISTS idx_file_index_kind{suffix} ON file_index{suffix}(kind);
             CREATE INDEX IF NOT EXISTS idx_file_index_ext{suffix} ON file_index{suffix}(ext);
             CREATE INDEX IF NOT EXISTS idx_file_index_sha1{suffix} ON file_index{suffix}(sha1);
+            CREATE INDEX IF NOT EXISTS idx_file_index_path_hash{suffix} ON file_index{suffix}(path_hash);
             CREATE INDEX IF NOT EXISTS idx_ableton_docs_scanned_at{suffix} ON ableton_docs{suffix}(scanned_at);
             CREATE UNIQUE INDEX IF NOT EXISTS uq_doc_sample_refs{suffix} ON doc_sample_refs{suffix}(doc_path, sample_path);
             CREATE UNIQUE INDEX IF NOT EXISTS uq_doc_device_hints{suffix} ON doc_device_hints{suffix}(doc_path, device_hint);
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_doc_device_sequence{suffix} ON doc_device_sequence{suffix}(doc_path, ord, device_name);
             CREATE UNIQUE INDEX IF NOT EXISTS uq_refs_graph{suffix} ON refs_graph{suffix}(src, ref_kind, ref_path);
             CREATE INDEX IF NOT EXISTS idx_doc_sample_refs_doc_path{suffix} ON doc_sample_refs{suffix}(doc_path);
             CREATE INDEX IF NOT EXISTS idx_doc_sample_refs_sample_path{suffix} ON doc_sample_refs{suffix}(sample_path);
             CREATE INDEX IF NOT EXISTS idx_doc_device_hints_device{suffix} ON doc_device_hints{suffix}(device_hint);
+            CREATE INDEX IF NOT EXISTS idx_doc_device_sequence_doc{suffix} ON doc_device_sequence{suffix}(doc_path);
+            CREATE INDEX IF NOT EXISTS idx_doc_device_sequence_name{suffix} ON doc_device_sequence{suffix}(device_name);
             CREATE INDEX IF NOT EXISTS idx_refs_graph_src{suffix} ON refs_graph{suffix}(src);
             CREATE INDEX IF NOT EXISTS idx_refs_graph_ref_path{suffix} ON refs_graph{suffix}(ref_path);
             CREATE INDEX IF NOT EXISTS idx_refs_graph_ref_kind{suffix} ON refs_graph{suffix}(ref_kind);
             """
         )
+
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS audio_analysis (
+            scope TEXT NOT NULL,
+            path TEXT NOT NULL,
+            duration_sec REAL,
+            sample_rate INTEGER,
+            channels INTEGER,
+            bit_depth INTEGER,
+            codec TEXT,
+            scanned_at INTEGER NOT NULL,
+            PRIMARY KEY (scope, path)
+        );
+
+        CREATE TABLE IF NOT EXISTS plugin_index (
+            scope TEXT NOT NULL,
+            path TEXT NOT NULL,
+            name TEXT,
+            vendor TEXT,
+            version TEXT,
+            format TEXT,
+            bundle_id TEXT,
+            scanned_at INTEGER NOT NULL,
+            PRIMARY KEY (scope, path)
+        );
+
+        CREATE TABLE IF NOT EXISTS device_usage (
+            scope TEXT NOT NULL,
+            device_name TEXT NOT NULL,
+            usage_count INTEGER NOT NULL,
+            computed_at INTEGER NOT NULL,
+            PRIMARY KEY (scope, device_name)
+        );
+
+        CREATE TABLE IF NOT EXISTS device_chain_stats (
+            scope TEXT NOT NULL,
+            chain TEXT NOT NULL,
+            chain_len INTEGER NOT NULL,
+            usage_count INTEGER NOT NULL,
+            computed_at INTEGER NOT NULL,
+            PRIMARY KEY (scope, chain)
+        );
+        """
+    )
 
 
 def get_ingest_offset(conn: sqlite3.Connection, source: str) -> int:
@@ -217,6 +280,7 @@ def ensure_column(conn: sqlite3.Connection, table: str, column: str, ddl: str) -
 
 def ensure_file_index_columns(conn: sqlite3.Connection, table: str) -> None:
     columns = {
+        "path_hash": "path_hash TEXT",
         "ctime": "ctime INTEGER",
         "atime": "atime INTEGER",
         "inode": "inode INTEGER",
@@ -229,9 +293,18 @@ def ensure_file_index_columns(conn: sqlite3.Connection, table: str) -> None:
         "name": "name TEXT",
         "parent": "parent TEXT",
         "mime": "mime TEXT",
+        "audio_duration": "audio_duration REAL",
+        "audio_sample_rate": "audio_sample_rate INTEGER",
+        "audio_channels": "audio_channels INTEGER",
+        "audio_bit_depth": "audio_bit_depth INTEGER",
+        "audio_codec": "audio_codec TEXT",
     }
     for col, ddl in columns.items():
         ensure_column(conn, table, col, ddl)
+
+
+def ensure_ableton_docs_columns(conn: sqlite3.Connection, table: str) -> None:
+    ensure_column(conn, table, "tempo", "tempo REAL")
 
 
 def load_file_index(
@@ -246,6 +319,7 @@ def load_file_index(
         rows.append(
             (
                 rec.get("path"),
+                rec.get("path_hash"),
                 rec.get("ext"),
                 rec.get("size"),
                 rec.get("mtime"),
@@ -265,6 +339,11 @@ def load_file_index(
                 rec.get("scanned_at"),
                 rec.get("sha1"),
                 rec.get("sha1_error"),
+                rec.get("audio_duration"),
+                rec.get("audio_sample_rate"),
+                rec.get("audio_channels"),
+                rec.get("audio_bit_depth"),
+                rec.get("audio_codec"),
             )
         )
         if len(rows) >= 1000:
@@ -273,12 +352,13 @@ def load_file_index(
                 f"""
                 INSERT OR REPLACE INTO {table}
                     (
-                        path, ext, size, mtime,
+                        path, path_hash, ext, size, mtime,
                         ctime, atime, inode, device, mode, uid, gid, is_symlink, symlink_target,
                         name, parent, mime,
-                        kind, scanned_at, sha1, sha1_error
+                        kind, scanned_at, sha1, sha1_error,
+                        audio_duration, audio_sample_rate, audio_channels, audio_bit_depth, audio_codec
                     )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 rows,
             )
@@ -295,12 +375,13 @@ def load_file_index(
             f"""
             INSERT OR REPLACE INTO {table}
                 (
-                    path, ext, size, mtime,
+                    path, path_hash, ext, size, mtime,
                     ctime, atime, inode, device, mode, uid, gid, is_symlink, symlink_target,
                     name, parent, mime,
-                    kind, scanned_at, sha1, sha1_error
+                    kind, scanned_at, sha1, sha1_error,
+                    audio_duration, audio_sample_rate, audio_channels, audio_bit_depth, audio_codec
                 )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             rows,
         )
@@ -316,6 +397,7 @@ def load_ableton_docs(
     doc_rows: list[tuple] = []
     sample_rows: list[tuple] = []
     device_rows: list[tuple] = []
+    sequence_rows: list[tuple] = []
 
     def flush() -> None:
         if doc_rows:
@@ -326,9 +408,10 @@ def load_ableton_docs(
                     (
                         path, ext, kind, scanned_at, error,
                         tracks_audio, tracks_midi, tracks_return, tracks_master, tracks_total,
-                        clips_audio, clips_midi, clips_total
+                        clips_audio, clips_midi, clips_total,
+                        tempo
                     )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 doc_rows,
             )
@@ -355,6 +438,17 @@ def load_ableton_docs(
                 device_rows,
             )
             device_rows.clear()
+        if sequence_rows:
+            insert_many(
+                conn,
+                f"""
+                INSERT OR REPLACE INTO {table.replace('ableton_docs', 'doc_device_sequence')}
+                    (doc_path, ord, device_name)
+                VALUES (?, ?, ?)
+                """,
+                sequence_rows,
+            )
+            sequence_rows.clear()
 
     def on_record(rec: dict) -> None:
         summary = rec.get("summary") or {}
@@ -375,6 +469,7 @@ def load_ableton_docs(
                 clips.get("audio"),
                 clips.get("midi"),
                 clips.get("total"),
+                summary.get("tempo"),
             )
         )
         scanned_at = rec.get("scanned_at")
@@ -382,8 +477,15 @@ def load_ableton_docs(
             sample_rows.append((rec.get("path"), sample, scanned_at))
         for hint in summary.get("device_hints", []) or []:
             device_rows.append((rec.get("path"), hint))
+        for idx, name in enumerate(summary.get("device_sequence", []) or []):
+            sequence_rows.append((rec.get("path"), idx, name))
 
-        if len(doc_rows) >= 1000 or len(sample_rows) >= 2000 or len(device_rows) >= 2000:
+        if (
+            len(doc_rows) >= 1000
+            or len(sample_rows) >= 2000
+            or len(device_rows) >= 2000
+            or len(sequence_rows) >= 2000
+        ):
             flush()
 
     end_offset = (
@@ -469,6 +571,32 @@ def load_scan_state(conn: sqlite3.Connection, path: Path, table: str) -> None:
     )
 
 
+def load_audio_analysis(
+    conn: sqlite3.Connection, file_index_table: str, scope: str
+) -> None:
+    conn.execute(
+        f"""
+        INSERT OR REPLACE INTO audio_analysis
+            (scope, path, duration_sec, sample_rate, channels, bit_depth, codec, scanned_at)
+        SELECT
+            ?,
+            path,
+            audio_duration,
+            audio_sample_rate,
+            audio_channels,
+            audio_bit_depth,
+            audio_codec,
+            scanned_at
+        FROM {file_index_table}
+        WHERE audio_duration IS NOT NULL
+           OR audio_sample_rate IS NOT NULL
+           OR audio_channels IS NOT NULL
+           OR audio_bit_depth IS NOT NULL
+        """,
+        (scope,),
+    )
+
+
 def load_ableton_prefs(conn: sqlite3.Connection, cache_dir: Path) -> None:
     payloads = load_prefs_payloads(cache_dir)
     for entry in payloads:
@@ -494,6 +622,30 @@ def load_ableton_prefs(conn: sqlite3.Connection, cache_dir: Path) -> None:
         )
 
 
+def load_plugin_index(conn: sqlite3.Connection, cache_dir: Path) -> None:
+    payloads = load_plugin_payloads(cache_dir)
+    for entry in payloads:
+        scope = entry.get("scope", "preferences")
+        for plugin in entry.get("plugins", []):
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO plugin_index
+                    (scope, path, name, vendor, version, format, bundle_id, scanned_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    scope,
+                    plugin.get("path"),
+                    plugin.get("name"),
+                    plugin.get("vendor"),
+                    plugin.get("version"),
+                    plugin.get("format"),
+                    plugin.get("bundle_id"),
+                    entry.get("scanned_at"),
+                ),
+            )
+
+
 def migrate_catalog(catalog: CatalogPaths, db_path: Path, incremental: bool) -> None:
     conn = sqlite3.connect(db_path)
     try:
@@ -508,6 +660,7 @@ def migrate_catalog(catalog: CatalogPaths, db_path: Path, incremental: bool) -> 
                 scan_state_table = scoped_name("scan_state", scope)
 
                 ensure_file_index_columns(conn, file_index_table)
+                ensure_ableton_docs_columns(conn, docs_table)
                 ensure_column(conn, refs_table, "ref_exists", "ref_exists INTEGER")
                 ensure_column(conn, scan_state_table, "ctime", "ctime INTEGER")
 
@@ -520,7 +673,9 @@ def migrate_catalog(catalog: CatalogPaths, db_path: Path, incremental: bool) -> 
                 load_ableton_docs(conn, docs_path, incremental, docs_table)
                 load_refs_graph(conn, refs_path, incremental, refs_table)
                 load_scan_state(conn, scan_state_path, scan_state_table)
+                load_audio_analysis(conn, file_index_table, scope)
             load_ableton_prefs(conn, catalog.root)
+            load_plugin_index(conn, catalog.root)
     finally:
         conn.close()
 

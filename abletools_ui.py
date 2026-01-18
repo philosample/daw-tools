@@ -257,6 +257,36 @@ class DashboardPanel(tk.Frame):
         self.activity_text.pack(fill="both", expand=True, padx=12, pady=(0, 12))
         self.activity_text.configure(state="disabled")
 
+        analytics = tk.Frame(self, bg=BG)
+        analytics.pack(fill="x", padx=16, pady=(0, 16))
+        analytics.columnconfigure((0, 1), weight=1)
+
+        self.top_devices_text = self._make_analytics_box(
+            analytics, "Top Devices", 0
+        )
+        self.top_chains_text = self._make_analytics_box(
+            analytics, "Top FX Chains", 1
+        )
+
+    def _make_analytics_box(self, master: tk.Frame, title: str, col: int) -> tk.Text:
+        box = tk.Frame(master, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
+        box.grid(row=0, column=col, sticky="nsew", padx=6)
+        tk.Label(box, text=title, font=H2_FONT, fg=TEXT, bg=PANEL).pack(
+            anchor="w", padx=12, pady=(10, 4)
+        )
+        text = tk.Text(
+            box,
+            height=6,
+            bg=PANEL,
+            fg=MUTED,
+            insertbackground=TEXT,
+            relief="flat",
+            font=MONO_FONT,
+        )
+        text.pack(fill="both", expand=True, padx=12, pady=(0, 12))
+        text.configure(state="disabled")
+        return text
+
     def _make_stat_card(self, master: tk.Frame, title: str, col: int) -> tk.Label:
         card = tk.Frame(master, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
         card.grid(row=0, column=col, sticky="nsew", padx=6, pady=6)
@@ -291,6 +321,18 @@ class DashboardPanel(tk.Frame):
         self.activity_text.delete("1.0", "end")
         self.activity_text.insert("end", "\n".join(lines))
         self.activity_text.configure(state="disabled")
+
+        devices = self.app.load_top_devices()
+        chains = self.app.load_top_chains()
+        self.top_devices_text.configure(state="normal")
+        self.top_devices_text.delete("1.0", "end")
+        self.top_devices_text.insert("end", "\n".join(devices) if devices else "No data yet.")
+        self.top_devices_text.configure(state="disabled")
+
+        self.top_chains_text.configure(state="normal")
+        self.top_chains_text.delete("1.0", "end")
+        self.top_chains_text.insert("end", "\n".join(chains) if chains else "No data yet.")
+        self.top_chains_text.configure(state="disabled")
 
 
 class CatalogPanel(tk.Frame):
@@ -400,17 +442,40 @@ class CatalogPanel(tk.Frame):
 
         self.tree = ttk.Treeview(
             center,
-            columns=("path", "tracks", "clips", "scope"),
+            columns=(
+                "path",
+                "ext",
+                "size",
+                "mtime",
+                "tracks",
+                "clips",
+                "devices",
+                "samples",
+                "missing",
+                "scope",
+            ),
             show="headings",
             height=14,
         )
         self.tree.heading("path", text="Path")
+        self.tree.heading("ext", text="Ext")
+        self.tree.heading("size", text="Size")
+        self.tree.heading("mtime", text="Modified")
         self.tree.heading("tracks", text="Tracks")
         self.tree.heading("clips", text="Clips")
+        self.tree.heading("devices", text="Devices")
+        self.tree.heading("samples", text="Samples")
+        self.tree.heading("missing", text="Missing")
         self.tree.heading("scope", text="Scope")
-        self.tree.column("path", width=420)
+        self.tree.column("path", width=360)
+        self.tree.column("ext", width=50, anchor="center")
+        self.tree.column("size", width=90, anchor="e")
+        self.tree.column("mtime", width=140, anchor="center")
         self.tree.column("tracks", width=70, anchor="center")
         self.tree.column("clips", width=70, anchor="center")
+        self.tree.column("devices", width=70, anchor="center")
+        self.tree.column("samples", width=70, anchor="center")
+        self.tree.column("missing", width=70, anchor="center")
         self.tree.column("scope", width=0, stretch=False)
         self.tree.grid(row=1, column=0, sticky="nsew", padx=12, pady=(0, 12))
         self.tree.bind("<<TreeviewSelect>>", self._on_select)
@@ -480,9 +545,14 @@ class CatalogPanel(tk.Frame):
                 samples_table=f"doc_sample_refs{suffix}",
             )
             return (
-                "SELECT path, tracks_total, clips_total, "
+                "SELECT d.path, f.ext, f.size, f.mtime, "
+                "d.tracks_total, d.clips_total, "
+                f"EXISTS(SELECT 1 FROM doc_device_hints{suffix} dh WHERE dh.doc_path = d.path) AS has_devices, "
+                f"EXISTS(SELECT 1 FROM doc_sample_refs{suffix} ds WHERE ds.doc_path = d.path) AS has_samples, "
+                f"EXISTS(SELECT 1 FROM refs_graph{suffix} rg WHERE rg.src = d.path AND rg.ref_exists = 0) AS missing_refs, "
                 f"'{scope_label}' AS scope "
-                f"FROM ableton_docs{suffix} "
+                f"FROM ableton_docs{suffix} d "
+                f"LEFT JOIN file_index{suffix} f ON f.path = d.path "
                 f"WHERE {where}"
             )
 
@@ -503,16 +573,36 @@ class CatalogPanel(tk.Frame):
                 samples_table=f"doc_sample_refs{suffix}",
             )
             sql = (
-                "SELECT path, tracks_total, clips_total, "
+                "SELECT d.path, f.ext, f.size, f.mtime, "
+                "d.tracks_total, d.clips_total, "
+                f"EXISTS(SELECT 1 FROM doc_device_hints{suffix} dh WHERE dh.doc_path = d.path) AS has_devices, "
+                f"EXISTS(SELECT 1 FROM doc_sample_refs{suffix} ds WHERE ds.doc_path = d.path) AS has_samples, "
+                f"EXISTS(SELECT 1 FROM refs_graph{suffix} rg WHERE rg.src = d.path AND rg.ref_exists = 0) AS missing_refs, "
                 f"'{scope}' AS scope "
-                f"FROM ableton_docs{suffix} "
+                f"FROM ableton_docs{suffix} d "
+                f"LEFT JOIN file_index{suffix} f ON f.path = d.path "
                 f"WHERE {where} "
-                "ORDER BY scanned_at DESC LIMIT 500"
+                "ORDER BY d.scanned_at DESC LIMIT 500"
             )
         try:
             with sqlite3.connect(db_path) as conn:
                 for row in conn.execute(sql, params):
-                    self.tree.insert("", "end", values=(row[0], row[1], row[2], row[3]))
+                    self.tree.insert(
+                        "",
+                        "end",
+                        values=(
+                            row[0],
+                            row[1],
+                            row[2],
+                            row[3],
+                            row[4],
+                            row[5],
+                            "yes" if row[6] else "no",
+                            "yes" if row[7] else "no",
+                            "yes" if row[8] else "no",
+                            row[9],
+                        ),
+                    )
         except Exception as exc:
             self._set_detail(f"Failed to load catalog: {exc}")
 
@@ -530,7 +620,7 @@ class CatalogPanel(tk.Frame):
         if not values:
             return
         path = values[0]
-        scope = values[3] if len(values) > 3 else "live_recordings"
+        scope = values[9] if len(values) > 9 else "live_recordings"
         suffix = "" if scope == "live_recordings" else f"_{scope}"
         db_path = self.app.resolve_catalog_db_path()
         if not db_path or not db_path.exists():
@@ -541,6 +631,11 @@ class CatalogPanel(tk.Frame):
                 conn.row_factory = sqlite3.Row
                 doc = conn.execute(
                     f"SELECT * FROM ableton_docs{suffix} WHERE path = ?", (path,)
+                ).fetchone()
+                file_row = conn.execute(
+                    f"SELECT ext, size, mtime, audio_duration, audio_sample_rate, audio_channels "
+                    f"FROM file_index{suffix} WHERE path = ?",
+                    (path,),
                 ).fetchone()
                 samples = conn.execute(
                     f"SELECT COUNT(*) FROM doc_sample_refs{suffix} WHERE doc_path = ?",
@@ -564,11 +659,18 @@ class CatalogPanel(tk.Frame):
 
         lines = [
             f"Path: {doc['path']}",
+            f"Ext: {file_row['ext'] if file_row else ''}",
+            f"Size: {file_row['size'] if file_row else ''}",
+            f"Modified: {file_row['mtime'] if file_row else ''}",
             f"Tracks: {doc['tracks_total']}",
             f"Clips: {doc['clips_total']}",
             f"Samples: {samples}",
             f"Devices: {devices}",
             f"Missing refs: {missing}",
+            f"Tempo: {doc['tempo']}",
+            f"Audio duration: {file_row['audio_duration'] if file_row else ''}",
+            f"Audio rate: {file_row['audio_sample_rate'] if file_row else ''}",
+            f"Audio channels: {file_row['audio_channels'] if file_row else ''}",
             f"Scanned at: {doc['scanned_at']}",
         ]
         self._set_detail("\n".join(lines))
@@ -586,6 +688,7 @@ class ScanPanel(ttk.LabelFrame):
         self.rehash_var = tk.BooleanVar(value=False)
         self.scope_var = tk.StringVar(value="live_recordings")
         self.all_files_var = tk.BooleanVar(value=True)
+        self.analyze_audio_var = tk.BooleanVar(value=False)
         self.log_visible = tk.BooleanVar(value=False)
 
         self._proc: subprocess.Popen | None = None
@@ -616,7 +719,7 @@ class ScanPanel(ttk.LabelFrame):
         scope_menu = ttk.Combobox(
             opts,
             textvariable=self.scope_var,
-            values=["live_recordings", "user_library", "preferences"],
+            values=["live_recordings", "user_library", "preferences", "all"],
             state="readonly",
             width=16,
         )
@@ -648,6 +751,11 @@ class ScanPanel(ttk.LabelFrame):
             text="All files",
             variable=self.all_files_var,
         ).grid(row=0, column=6, sticky="w", padx=(14, 0))
+        ttk.Checkbutton(
+            opts,
+            text="Analyze audio",
+            variable=self.analyze_audio_var,
+        ).grid(row=0, column=7, sticky="w", padx=(14, 0))
 
         btns = ttk.Frame(self)
         btns.grid(row=2, column=0, columnspan=3, sticky="we", pady=(10, 0))
@@ -734,6 +842,10 @@ class ScanPanel(ttk.LabelFrame):
             root = self.app.user_library_root()
         elif scope == "preferences":
             root = self.app.preferences_root()
+        elif scope == "all":
+            root = Path(self.root_var.get()).expanduser()
+            if not root.exists():
+                root = self.app.default_scan_root()
         else:
             root = self.app.default_scan_root()
         if root:
@@ -780,30 +892,36 @@ class ScanPanel(ttk.LabelFrame):
             pass
         self.after(100, self._pump_queue)
 
-    def _scan_thread(self, cmd: list[str], cwd: Path) -> None:
+    def _scan_thread(self, cmds: list[list[str]], cwd: Path) -> None:
         try:
-            self._enqueue(f"$ {' '.join(cmd)}")
-            self._proc = subprocess.Popen(
-                cmd,
-                cwd=str(cwd),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,
-                universal_newlines=True,
-            )
-
-            assert self._proc.stdout is not None
-            for line in self._proc.stdout:
-                self._enqueue(line.rstrip("\n"))
+            rc = 0
+            for cmd in cmds:
                 if self._stop_requested:
                     break
+                self._enqueue(f"$ {' '.join(cmd)}")
+                self._proc = subprocess.Popen(
+                    cmd,
+                    cwd=str(cwd),
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    bufsize=1,
+                    universal_newlines=True,
+                )
 
-            try:
-                rc = self._proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                self._proc.kill()
-                rc = self._proc.wait(timeout=5)
+                assert self._proc.stdout is not None
+                for line in self._proc.stdout:
+                    self._enqueue(line.rstrip("\n"))
+                    if self._stop_requested:
+                        break
+
+                try:
+                    rc = self._proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    self._proc.kill()
+                    rc = self._proc.wait(timeout=5)
+                if rc != 0:
+                    break
 
             if self._stop_requested:
                 self._enqueue("Scan cancelled.")
@@ -849,6 +967,22 @@ class ScanPanel(ttk.LabelFrame):
             self._enqueue(proc.stdout.strip())
         if proc.returncode != 0:
             self._enqueue(proc.stderr.strip() or "DB update failed.")
+            return
+
+        analytics = self.app.abletools_dir / "abletools_analytics.py"
+        db_path = self.app.resolve_catalog_db_path()
+        if analytics.exists() and db_path:
+            try:
+                proc = subprocess.run(
+                    [sys.executable, str(analytics), str(db_path)],
+                    cwd=str(self.app.abletools_dir),
+                    capture_output=True,
+                    text=True,
+                )
+                if proc.returncode != 0:
+                    self._enqueue(proc.stderr.strip() or "Analytics update failed.")
+            except Exception as exc:
+                self._enqueue(f"Analytics update failed: {exc}")
 
     def _set_running(self, running: bool) -> None:
         def _apply() -> None:
@@ -880,20 +1014,29 @@ class ScanPanel(ttk.LabelFrame):
             messagebox.showerror("Scan", f"Missing scanner script:\n{scan_script}")
             return
 
-        cmd = [sys.executable, str(scan_script), str(root)]
-        cmd.extend(["--scope", self.scope_var.get()])
-        cmd.extend(["--out", str(self.app.catalog_dir())])
-        if self.incremental_var.get():
-            cmd.append("--incremental")
-        if self.include_media_var.get():
-            cmd.append("--include-media")
-        if self.hash_var.get():
-            cmd.append("--hash")
-            if self.rehash_var.get():
-                cmd.append("--rehash-all")
-        if not self.all_files_var.get():
-            cmd.append("--only-known")
-        cmd.append("--verbose")
+        scopes = [self.scope_var.get()]
+        if scopes[0] == "all":
+            scopes = ["live_recordings", "user_library", "preferences"]
+
+        cmds: list[list[str]] = []
+        for scope in scopes:
+            cmd = [sys.executable, str(scan_script), str(root)]
+            cmd.extend(["--scope", scope])
+            cmd.extend(["--out", str(self.app.catalog_dir())])
+            if self.incremental_var.get():
+                cmd.append("--incremental")
+            if self.include_media_var.get():
+                cmd.append("--include-media")
+            if self.analyze_audio_var.get():
+                cmd.append("--analyze-audio")
+            if self.hash_var.get():
+                cmd.append("--hash")
+                if self.rehash_var.get():
+                    cmd.append("--rehash-all")
+            if not self.all_files_var.get():
+                cmd.append("--only-known")
+            cmd.append("--verbose")
+            cmds.append(cmd)
 
         self.status_var.set("Running...")
         self._set_running(True)
@@ -905,7 +1048,7 @@ class ScanPanel(ttk.LabelFrame):
             self.log_canvas.configure(scrollregion=(0, 0, 0, 0))
 
         t = threading.Thread(
-            target=self._scan_thread, args=(cmd, self.app.abletools_dir), daemon=True
+            target=self._scan_thread, args=(cmds, self.app.abletools_dir), daemon=True
         )
         t.start()
 
@@ -1794,15 +1937,65 @@ class AbletoolsUI(tk.Tk):
             return stats
         try:
             with sqlite3.connect(db_path) as conn:
-                stats.file_count = conn.execute("SELECT COUNT(*) FROM file_index").fetchone()[0]
-                stats.doc_count = conn.execute("SELECT COUNT(*) FROM ableton_docs").fetchone()[0]
-                stats.refs_count = conn.execute("SELECT COUNT(*) FROM refs_graph").fetchone()[0]
+                stats.file_count = conn.execute(
+                    "SELECT SUM(cnt) FROM ("
+                    "SELECT COUNT(*) AS cnt FROM file_index "
+                    "UNION ALL SELECT COUNT(*) FROM file_index_user_library "
+                    "UNION ALL SELECT COUNT(*) FROM file_index_preferences)"
+                ).fetchone()[0] or 0
+                stats.doc_count = conn.execute(
+                    "SELECT SUM(cnt) FROM ("
+                    "SELECT COUNT(*) AS cnt FROM ableton_docs "
+                    "UNION ALL SELECT COUNT(*) FROM ableton_docs_user_library "
+                    "UNION ALL SELECT COUNT(*) FROM ableton_docs_preferences)"
+                ).fetchone()[0] or 0
+                stats.refs_count = conn.execute(
+                    "SELECT SUM(cnt) FROM ("
+                    "SELECT COUNT(*) AS cnt FROM refs_graph "
+                    "UNION ALL SELECT COUNT(*) FROM refs_graph_user_library "
+                    "UNION ALL SELECT COUNT(*) FROM refs_graph_preferences)"
+                ).fetchone()[0] or 0
                 stats.missing_refs = conn.execute(
-                    "SELECT COUNT(*) FROM refs_graph WHERE ref_exists = 0"
-                ).fetchone()[0]
+                    "SELECT SUM(cnt) FROM ("
+                    "SELECT COUNT(*) AS cnt FROM refs_graph WHERE ref_exists = 0 "
+                    "UNION ALL SELECT COUNT(*) FROM refs_graph_user_library WHERE ref_exists = 0 "
+                    "UNION ALL SELECT COUNT(*) FROM refs_graph_preferences WHERE ref_exists = 0)"
+                ).fetchone()[0] or 0
         except Exception:
             return stats
         return stats
+
+    def load_top_devices(self, limit: int = 8) -> list[str]:
+        db_path = self.resolve_catalog_db_path()
+        if not db_path or not db_path.exists():
+            return []
+        try:
+            with sqlite3.connect(db_path) as conn:
+                rows = conn.execute(
+                    "SELECT device_name, usage_count FROM device_usage "
+                    "WHERE scope != 'preferences' "
+                    "ORDER BY usage_count DESC LIMIT ?",
+                    (limit,),
+                ).fetchall()
+            return [f\"{name} ({count})\" for name, count in rows]
+        except Exception:
+            return []
+
+    def load_top_chains(self, limit: int = 6) -> list[str]:
+        db_path = self.resolve_catalog_db_path()
+        if not db_path or not db_path.exists():
+            return []
+        try:
+            with sqlite3.connect(db_path) as conn:
+                rows = conn.execute(
+                    "SELECT chain, usage_count FROM device_chain_stats "
+                    "WHERE scope != 'preferences' "
+                    "ORDER BY usage_count DESC LIMIT ?",
+                    (limit,),
+                ).fetchall()
+            return [f\"{chain} ({count})\" for chain, count in rows]
+        except Exception:
+            return []
 
     def _open_db_location(self) -> None:
         db_path = self.resolve_catalog_db_path()

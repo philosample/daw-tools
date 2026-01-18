@@ -11,6 +11,8 @@ import os
 import re
 import sys
 import time
+import wave
+import aifc
 from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime
@@ -27,6 +29,7 @@ MEDIA_EXTS = {".wav", ".aif", ".aiff", ".flac", ".mp3", ".m4a", ".ogg"}
 
 DEFAULT_INDEX_EXTS = sorted(ABLETON_DOC_EXTS | ABLETON_ARTIFACT_EXTS)
 SCOPES = {"live_recordings", "user_library", "preferences"}
+SKIP_DIRS = {".git", ".venv", "venv", "__pycache__", ".DS_Store"}
 
 # Ableton docs are typically gzipped XML.
 # We'll parse in a "schema-agnostic" way (heuristics) for MVP.
@@ -63,6 +66,10 @@ RE_XML_ATTR_NAME = re.compile(
     r'(?:\bName|\bDisplayName|\bShortName)\s*=\s*"([^"]+)"',
     re.IGNORECASE,
 )
+
+RE_TEMPO = re.compile(r"<Tempo[^>]*Value=\"([0-9.]+)\"", re.IGNORECASE)
+
+MIME_CACHE: dict[str, Optional[str]] = {}
 
 
 def _now_iso_local() -> str:
@@ -148,6 +155,10 @@ def sha1_file(path: Path, chunk_size: int = 1024 * 1024) -> str:
     return h.hexdigest()
 
 
+def hash_path(path: Path) -> str:
+    return hashlib.sha1(str(path).lower().encode("utf-8", errors="ignore")).hexdigest()
+
+
 def read_text_maybe_gzip(path: Path, max_bytes: int = 50_000_000) -> str:
     """
     Try to read as gzipped text first; fall back to plain text.
@@ -182,16 +193,25 @@ def classify(ext: str) -> str:
     return "other"
 
 
-def iter_files(root: Path) -> Iterable[Path]:
-    # os.walk is faster than Path.rglob for huge trees
-    for dirpath, dirnames, filenames in os.walk(root):
-        # skip common trash
-        dn = set(dirnames)
-        for skip in [".git", ".venv", "venv", "__pycache__", ".DS_Store"]:
-            if skip in dn:
-                dirnames.remove(skip)
-        for fn in filenames:
-            yield Path(dirpath) / fn
+def iter_files(root: Path) -> Iterable[os.DirEntry]:
+    stack = [root]
+    while stack:
+        current = stack.pop()
+        try:
+            with os.scandir(current) as it:
+                for entry in it:
+                    if entry.name in SKIP_DIRS:
+                        continue
+                    try:
+                        if entry.is_dir(follow_symlinks=False):
+                            stack.append(Path(entry.path))
+                            continue
+                    except OSError:
+                        continue
+                    if entry.is_file(follow_symlinks=False) or entry.is_symlink():
+                        yield entry
+        except OSError:
+            continue
 
 
 def ensure_dir(p: Path) -> None:
@@ -234,19 +254,31 @@ def parse_ableton_doc(text: str) -> dict:
 
     sample_refs = sorted(set(m.group(1) for m in RE_PATHS.finditer(text)))
 
-    # device/plugin hints: combine a few heuristics, then cap output
+    # device/plugin hints: combine a few heuristics, preserve sequence
     hints = set()
+    sequence: list[str] = []
     for m in RE_DEVICE_HINTS.finditer(text):
         v = m.group(1).strip()
         if v:
             hints.add(v)
+            sequence.append(v)
     for m in RE_XML_ATTR_NAME.finditer(text):
         v = m.group(1).strip()
         # avoid obviously huge blobs
         if 1 <= len(v) <= 120:
             hints.add(v)
+            sequence.append(v)
 
     devices = sorted(hints)[:250]
+    device_sequence = sequence[:500]
+
+    tempo = None
+    tempo_match = RE_TEMPO.search(text)
+    if tempo_match:
+        try:
+            tempo = float(tempo_match.group(1))
+        except ValueError:
+            tempo = None
 
     return {
         "tracks": {
@@ -263,7 +295,37 @@ def parse_ableton_doc(text: str) -> dict:
         },
         "sample_refs": sample_refs,
         "device_hints": devices,
+        "device_sequence": device_sequence,
+        "tempo": tempo,
     }
+
+
+def analyze_audio(path: Path, ext: str) -> dict:
+    info = {"audio_codec": ext.lstrip(".")}
+    try:
+        if ext in {".wav"}:
+            with wave.open(str(path), "rb") as wf:
+                info.update(
+                    {
+                        "audio_duration": wf.getnframes() / float(wf.getframerate() or 1),
+                        "audio_sample_rate": wf.getframerate(),
+                        "audio_channels": wf.getnchannels(),
+                        "audio_bit_depth": wf.getsampwidth() * 8,
+                    }
+                )
+        elif ext in {".aif", ".aiff"}:
+            with aifc.open(str(path), "rb") as af:
+                info.update(
+                    {
+                        "audio_duration": af.getnframes() / float(af.getframerate() or 1),
+                        "audio_sample_rate": af.getframerate(),
+                        "audio_channels": af.getnchannels(),
+                        "audio_bit_depth": af.getsampwidth() * 8,
+                    }
+                )
+    except Exception:
+        pass
+    return info
 
 
 def main(argv: list[str]) -> int:
@@ -288,6 +350,11 @@ def main(argv: list[str]) -> int:
         "--include-media",
         action="store_true",
         help="Also index media files (wav/aif/flac/mp3/etc.)",
+    )
+    ap.add_argument(
+        "--analyze-audio",
+        action="store_true",
+        help="Extract basic audio metadata for wav/aif/aiff (duration, rate, channels).",
     )
     ap.add_argument(
         "--hash",
@@ -347,15 +414,16 @@ def main(argv: list[str]) -> int:
     refs_total = 0
     refs_missing = 0
 
-    for p in iter_files(root):
+    for entry in iter_files(root):
         scanned += 1
+        p = Path(entry.path)
         ext = p.suffix.lower()
         if not all_files and ext not in wanted_exts:
             continue
 
         try:
-            st = p.lstat()
-        except FileNotFoundError:
+            st = entry.stat(follow_symlinks=False)
+        except (FileNotFoundError, OSError):
             continue
 
         rel = str(p)
@@ -368,7 +436,7 @@ def main(argv: list[str]) -> int:
         mode = int(getattr(st, "st_mode", 0))
         uid = int(getattr(st, "st_uid", 0))
         gid = int(getattr(st, "st_gid", 0))
-        is_symlink = bool(mode & 0o120000)
+        is_symlink = entry.is_symlink()
         symlink_target = None
         if is_symlink:
             try:
@@ -396,6 +464,7 @@ def main(argv: list[str]) -> int:
 
         rec = {
             "path": rel,
+            "path_hash": hash_path(p),
             "ext": ext,
             "size": size,
             "mtime": mtime,
@@ -408,9 +477,9 @@ def main(argv: list[str]) -> int:
             "gid": gid,
             "is_symlink": bool(is_symlink),
             "symlink_target": symlink_target,
-            "name": p.name,
+            "name": entry.name,
             "parent": str(p.parent),
-            "mime": mimetypes.guess_type(p.name)[0],
+            "mime": MIME_CACHE.setdefault(ext, mimetypes.guess_type(p.name)[0]),
             "kind": classify(ext),
             "scanned_at": started,
             "scope": scope,
@@ -426,6 +495,9 @@ def main(argv: list[str]) -> int:
                 rec["sha1"] = current_sha1
             if sha1_error:
                 rec["sha1_error"] = sha1_error
+
+        if args.analyze_audio and ext in MEDIA_EXTS:
+            rec.update(analyze_audio(p, ext))
 
         write_jsonl(file_index_path, rec)
         indexed += 1
