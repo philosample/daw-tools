@@ -352,6 +352,7 @@ class CatalogPanel(tk.Frame):
         self.filter_missing = tk.BooleanVar(value=False)
         self.filter_devices = tk.BooleanVar(value=False)
         self.filter_samples = tk.BooleanVar(value=False)
+        self.show_backups = tk.BooleanVar(value=False)
         self.visible_columns: list[str] = []
         self._sort_state: dict[str, bool] = {}
         self._last_rows: list[dict[str, str]] = []
@@ -472,7 +473,19 @@ class CatalogPanel(tk.Frame):
             selectcolor=BG_NAV,
             command=self.refresh,
         )
-        self.filter_buttons["samples"].pack(anchor="w", padx=12, pady=(2, 12))
+        self.filter_buttons["samples"].pack(anchor="w", padx=12, pady=2)
+        self.filter_buttons["backups"] = tk.Checkbutton(
+            filters,
+            text="Show backups",
+            variable=self.show_backups,
+            bg=PANEL,
+            fg=TEXT,
+            activebackground=PANEL,
+            activeforeground=TEXT,
+            selectcolor=BG_NAV,
+            command=self.refresh,
+        )
+        self.filter_buttons["backups"].pack(anchor="w", padx=12, pady=(2, 12))
 
         center = tk.Frame(body, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
         center.grid(row=0, column=1, sticky="nsew")
@@ -485,6 +498,17 @@ class CatalogPanel(tk.Frame):
 
         self.tree_frame = tk.Frame(center, bg=PANEL)
         self.tree_frame.grid(row=1, column=0, sticky="nsew", padx=12, pady=(0, 12))
+        self.pref_summary = tk.Text(
+            center,
+            bg=PANEL,
+            fg=MUTED,
+            insertbackground=TEXT,
+            relief="flat",
+            font=MONO_FONT,
+            wrap="none",
+        )
+        self.pref_summary.grid(row=1, column=0, sticky="nsew", padx=12, pady=(0, 12))
+        self.pref_summary.grid_remove()
         self._build_tree(self._default_columns_for_scope("live_recordings"))
 
         detail = tk.Frame(body, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
@@ -526,6 +550,7 @@ class CatalogPanel(tk.Frame):
         self.filter_missing.set(False)
         self.filter_devices.set(False)
         self.filter_samples.set(False)
+        self.show_backups.set(False)
         self.refresh()
 
     def _on_scope_change(self) -> None:
@@ -563,6 +588,7 @@ class CatalogPanel(tk.Frame):
         self._set_filter_state("missing", self.filter_missing, state)
         self._set_filter_state("devices", self.filter_devices, state)
         self._set_filter_state("samples", self.filter_samples, state)
+        self._set_filter_state("backups", self.show_backups, "normal")
 
     def _set_filter_state(self, key: str, var: tk.BooleanVar, state: str) -> None:
         if state == "disabled":
@@ -772,6 +798,24 @@ class CatalogPanel(tk.Frame):
     def _set_detail_message(self, message: str) -> None:
         self._set_detail_fields([("Info", message)])
 
+    def _render_pref_summary(self) -> None:
+        self.pref_summary.configure(state="normal")
+        self.pref_summary.delete("1.0", "end")
+        if not self._last_rows:
+            self.pref_summary.insert("end", "No preferences found.")
+            self.pref_summary.configure(state="disabled")
+            return
+        kinds = {}
+        for row in self._last_rows:
+            kinds[row.get("kind", "unknown")] = kinds.get(row.get("kind", "unknown"), 0) + 1
+        self.pref_summary.insert("end", "Preferences Summary\n\n")
+        for kind, count in sorted(kinds.items()):
+            self.pref_summary.insert("end", f"{kind}: {count}\n")
+        self.pref_summary.insert("\nSources:\n")
+        for row in self._last_rows[:12]:
+            self.pref_summary.insert("end", f"- {row.get('source', '')}\n")
+        self.pref_summary.configure(state="disabled")
+
     def refresh(self) -> None:
         if self.app.current_scope and self.scope_var.get() != "all":
             if self.scope_var.get() != self.app.current_scope:
@@ -790,6 +834,8 @@ class CatalogPanel(tk.Frame):
 
         term = self.search_var.get().strip()
         scope = self.scope_var.get()
+        self.pref_summary.grid_remove()
+        self.tree_frame.grid()
         clauses = []
         params = []
         if term:
@@ -805,10 +851,17 @@ class CatalogPanel(tk.Frame):
             clauses.append("has_devices = 1")
         if self.filter_samples.get():
             clauses.append("has_samples = 1")
+        if not self.show_backups.get():
+            clauses.append(
+                "lower(path) NOT LIKE ? AND lower(path) NOT LIKE ? AND lower(path) NOT LIKE ?"
+            )
+            params.extend(["%backup%", "%backups%", "%_backup%"])
 
         where_sql = " AND ".join(clauses) if clauses else "1=1"
 
         if scope == "preferences":
+            self.tree_frame.grid_remove()
+            self.pref_summary.grid()
             sql = (
                 "SELECT kind, source, mtime, scanned_at "
                 "FROM ableton_prefs "
@@ -858,6 +911,8 @@ class CatalogPanel(tk.Frame):
                             "mtime": str(row[2]),
                             "scope": "preferences",
                         }
+                        self._last_rows.append(values)
+                        continue
                     elif scope == "user_library":
                         name = self._truncate_path(Path(row[0]).name)
                         values = {
@@ -893,6 +948,8 @@ class CatalogPanel(tk.Frame):
                     self.tree.insert("", "end", values=row_values)
                     self._last_rows.append(values)
             self._autosize_columns()
+            if scope == "preferences":
+                self._render_pref_summary()
         except sqlite3.OperationalError as exc:
             if "no such table" in str(exc):
                 self._set_detail_message(
@@ -2503,10 +2560,21 @@ class AbletoolsUI(tk.Tk):
                     ("user_library", "_user_library"),
                 ):
                     rows = conn.execute(
-                        f"SELECT path FROM ableton_docs{suffix} WHERE tracks_total = 0 LIMIT 50"
+                        f"""
+                        SELECT d.path, d.tracks_total, d.clips_total, d.error, f.size
+                        FROM ableton_docs{suffix} d
+                        LEFT JOIN file_index{suffix} f ON f.path = d.path
+                        WHERE d.tracks_total = 0
+                        LIMIT 50
+                        """
                     ).fetchall()
                     for row in rows:
-                        issues.append(f"{scope}: {row['path']}")
+                        reason = "no track tags found"
+                        if row["error"]:
+                            reason = f"parse error: {row['error']}"
+                        issues.append(
+                            f"{scope}: {row['path']} (clips={row['clips_total']}, size={row['size']}, {reason})"
+                        )
         except Exception as exc:
             self._log_event("ERROR", f"audit_zero_tracks: {exc}")
         return issues
