@@ -1,0 +1,20 @@
+# OS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Virtual envs
+venv/
+.venv/
+
+# Abletools artifacts
+.abletools_catalog/
+*.bak
+test.als
+
+# Editor
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json

@@ -1,0 +1,57 @@
+[tool.ruff]
+# Formatter settings (Black-compatible)
+line-length = 88
+indent-width = 4
+target-version = "py311"
+
+# Directories Ruff should ignore
+exclude = [
+  ".git",
+  ".venv",
+  "venv",
+  "__pycache__",
+  "build",
+  "dist",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+docstring-code-format = true
+
+[tool.ruff.lint]
+# Core rule sets
+select = [
+  "E",   # pycodestyle errors
+  "F",   # pyflakes
+  "W",   # pycodestyle warnings
+  "I",   # import sorting (replaces isort)
+  "UP",  # pyupgrade
+  "B",   # flake8-bugbear
+  "SIM", # simplify
+  "C4",  # comprehensions
+]
+
+ignore = [
+  "E203",  # whitespace before ':' (Black compatibility)
+  "E266",  # too many leading '#' (comments)
+  "E501",  # line length (handled by formatter)
+  "B008",  # function calls in defaults (often fine for UI)
+]
+
+# Allow underscore-prefixed unused vars (callbacks, handlers)
+dummy-variable-rgx = "^_|^__"
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+force-single-line = false
+known-first-party = ["abletools"]
+
+[tool.ruff.lint.flake8-bugbear]
+# Allow certain immutable calls common in UI / Tk code
+extend-immutable-calls = [
+  "tkinter.StringVar",
+  "tkinter.BooleanVar",
+]
