@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import queue
 import sqlite3
 import subprocess
@@ -351,6 +352,8 @@ class CatalogPanel(tk.Frame):
         self.filter_missing = tk.BooleanVar(value=False)
         self.filter_devices = tk.BooleanVar(value=False)
         self.filter_samples = tk.BooleanVar(value=False)
+        self.visible_columns: list[str] = []
+        self._sort_state: dict[str, bool] = {}
         self._build()
 
     def _build(self) -> None:
@@ -363,14 +366,16 @@ class CatalogPanel(tk.Frame):
 
         search = tk.Frame(header, bg=BG)
         search.pack(side="right")
-        ttk.Combobox(
+        scope_menu = ttk.Combobox(
             search,
             textvariable=self.scope_var,
             values=["live_recordings", "user_library", "preferences", "all"],
             state="readonly",
             width=16,
-        ).pack(side="left", padx=(0, 8))
-        tk.Entry(
+        )
+        scope_menu.pack(side="left", padx=(0, 8))
+        scope_menu.bind("<<ComboboxSelected>>", lambda _event: self._on_scope_change())
+        search_entry = tk.Entry(
             search,
             textvariable=self.search_var,
             font=BODY_FONT,
@@ -394,6 +399,12 @@ class CatalogPanel(tk.Frame):
             command=self._reset_filters,
             style="Ghost.TButton",
         ).pack(side="left", padx=(8, 0))
+        ttk.Button(
+            search,
+            text="Columns",
+            command=self._show_columns_menu,
+            style="Ghost.TButton",
+        ).pack(side="left", padx=(8, 0))
 
         body = tk.Frame(self, bg=BG)
         body.pack(fill="both", expand=True, padx=16, pady=(0, 16))
@@ -406,7 +417,8 @@ class CatalogPanel(tk.Frame):
         tk.Label(filters, text="Filters", font=H2_FONT, fg=TEXT, bg=PANEL).pack(
             anchor="w", padx=12, pady=(10, 6)
         )
-        tk.Checkbutton(
+        self.filter_buttons: dict[str, tk.Checkbutton] = {}
+        self.filter_buttons["missing"] = tk.Checkbutton(
             filters,
             text="Missing refs",
             variable=self.filter_missing,
@@ -416,8 +428,9 @@ class CatalogPanel(tk.Frame):
             activeforeground=TEXT,
             selectcolor=BG_NAV,
             command=self.refresh,
-        ).pack(anchor="w", padx=12, pady=2)
-        tk.Checkbutton(
+        )
+        self.filter_buttons["missing"].pack(anchor="w", padx=12, pady=2)
+        self.filter_buttons["devices"] = tk.Checkbutton(
             filters,
             text="Has devices",
             variable=self.filter_devices,
@@ -427,8 +440,9 @@ class CatalogPanel(tk.Frame):
             activeforeground=TEXT,
             selectcolor=BG_NAV,
             command=self.refresh,
-        ).pack(anchor="w", padx=12, pady=2)
-        tk.Checkbutton(
+        )
+        self.filter_buttons["devices"].pack(anchor="w", padx=12, pady=2)
+        self.filter_buttons["samples"] = tk.Checkbutton(
             filters,
             text="Has samples",
             variable=self.filter_samples,
@@ -438,7 +452,8 @@ class CatalogPanel(tk.Frame):
             activeforeground=TEXT,
             selectcolor=BG_NAV,
             command=self.refresh,
-        ).pack(anchor="w", padx=12, pady=(2, 12))
+        )
+        self.filter_buttons["samples"].pack(anchor="w", padx=12, pady=(2, 12))
 
         center = tk.Frame(body, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
         center.grid(row=0, column=1, sticky="nsew")
@@ -449,48 +464,9 @@ class CatalogPanel(tk.Frame):
             row=0, column=0, sticky="w", padx=12, pady=(10, 6)
         )
 
-        self.tree = ttk.Treeview(
-            center,
-            columns=(
-                "path",
-                "ext",
-                "size",
-                "mtime",
-                "tracks",
-                "clips",
-                "devices",
-                "samples",
-                "missing",
-                "scanned_at",
-                "scope",
-            ),
-            show="headings",
-            height=14,
-        )
-        self.tree.heading("path", text="Path")
-        self.tree.heading("ext", text="Ext")
-        self.tree.heading("size", text="Size")
-        self.tree.heading("mtime", text="Modified")
-        self.tree.heading("tracks", text="Tracks")
-        self.tree.heading("clips", text="Clips")
-        self.tree.heading("devices", text="Devices")
-        self.tree.heading("samples", text="Samples")
-        self.tree.heading("missing", text="Missing")
-        self.tree.heading("scanned_at", text="Scanned")
-        self.tree.heading("scope", text="Scope")
-        self.tree.column("path", width=360)
-        self.tree.column("ext", width=50, anchor="center")
-        self.tree.column("size", width=90, anchor="e")
-        self.tree.column("mtime", width=140, anchor="center")
-        self.tree.column("tracks", width=70, anchor="center")
-        self.tree.column("clips", width=70, anchor="center")
-        self.tree.column("devices", width=70, anchor="center")
-        self.tree.column("samples", width=70, anchor="center")
-        self.tree.column("missing", width=70, anchor="center")
-        self.tree.column("scanned_at", width=0, stretch=False)
-        self.tree.column("scope", width=0, stretch=False)
-        self.tree.grid(row=1, column=0, sticky="nsew", padx=12, pady=(0, 12))
-        self.tree.bind("<<TreeviewSelect>>", self._on_select)
+        self.tree_frame = tk.Frame(center, bg=PANEL)
+        self.tree_frame.grid(row=1, column=0, sticky="nsew", padx=12, pady=(0, 12))
+        self._build_tree(self._default_columns_for_scope("live_recordings"))
 
         detail = tk.Frame(body, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
         detail.grid(row=0, column=2, sticky="ns", padx=(12, 0))
@@ -499,17 +475,32 @@ class CatalogPanel(tk.Frame):
         tk.Label(detail, text="Details", font=H2_FONT, fg=TEXT, bg=PANEL).grid(
             row=0, column=0, sticky="w", padx=12, pady=(10, 6)
         )
-        self.detail_text = tk.Text(
-            detail,
-            width=34,
-            bg=PANEL,
-            fg=MUTED,
-            insertbackground=TEXT,
-            relief="flat",
-            font=MONO_FONT,
-        )
-        self.detail_text.grid(row=1, column=0, sticky="nsew", padx=12, pady=(0, 12))
-        self.detail_text.configure(state="disabled")
+        self.detail_frame = tk.Frame(detail, bg=PANEL)
+        self.detail_frame.grid(row=1, column=0, sticky="nsew", padx=12, pady=(0, 12))
+        self.detail_rows: list[tuple[tk.Label, tk.Label]] = []
+        for _ in range(12):
+            label = tk.Label(
+                self.detail_frame,
+                text="",
+                font=BODY_FONT,
+                fg=MUTED,
+                bg=PANEL,
+                anchor="e",
+                width=12,
+            )
+            value = tk.Label(
+                self.detail_frame,
+                text="",
+                font=BODY_FONT,
+                fg=TEXT,
+                bg=PANEL,
+                anchor="w",
+            )
+            row = len(self.detail_rows)
+            label.grid(row=row, column=0, sticky="e", padx=(0, 6), pady=2)
+            value.grid(row=row, column=1, sticky="w", pady=2)
+            self.detail_rows.append((label, value))
+        self._configure_filters(self.scope_var.get())
 
     def _reset_filters(self) -> None:
         self.search_var.set("")
@@ -518,18 +509,166 @@ class CatalogPanel(tk.Frame):
         self.filter_samples.set(False)
         self.refresh()
 
+    def _on_scope_change(self) -> None:
+        scope = self.scope_var.get()
+        self.app.set_current_scope(scope)
+        self._set_columns_for_scope(scope)
+        self._configure_filters(scope)
+        self.refresh()
+
+    def _default_columns_for_scope(self, scope: str) -> list[str]:
+        if scope == "live_recordings":
+            return ["name", "tracks", "clips", "missing", "mtime", "path_full", "scope"]
+        if scope == "user_library":
+            return ["name", "ext", "size", "mtime", "path_full", "scope"]
+        if scope == "preferences":
+            return ["kind", "source", "mtime", "scope"]
+        return ["name", "ext", "missing", "mtime", "scope", "path_full"]
+
+    def _optional_columns_for_scope(self, scope: str) -> list[str]:
+        if scope == "live_recordings":
+            return ["devices", "samples", "ext", "size"]
+        if scope == "user_library":
+            return ["missing"]
+        if scope == "preferences":
+            return []
+        return ["tracks", "clips", "devices", "samples", "size"]
+
+    def _set_columns_for_scope(self, scope: str) -> None:
+        base = self._default_columns_for_scope(scope)
+        self.visible_columns = base
+        self._build_tree(self.visible_columns)
+
+    def _configure_filters(self, scope: str) -> None:
+        state = "normal" if scope in {"live_recordings", "all"} else "disabled"
+        self._set_filter_state("missing", self.filter_missing, state)
+        self._set_filter_state("devices", self.filter_devices, state)
+        self._set_filter_state("samples", self.filter_samples, state)
+
+    def _set_filter_state(self, key: str, var: tk.BooleanVar, state: str) -> None:
+        if state == "disabled":
+            var.set(False)
+        btn = self.filter_buttons.get(key)
+        if btn:
+            btn.configure(state=state)
+
+    def _show_columns_menu(self) -> None:
+        scope = self.scope_var.get()
+        optional = self._optional_columns_for_scope(scope)
+        if not optional:
+            messagebox.showinfo("Columns", "No optional columns for this scope.")
+            return
+        menu = tk.Menu(self, tearoff=False)
+        for col in optional:
+            var = tk.BooleanVar(value=col in self.visible_columns)
+
+            def _toggle(c: str = col, v: tk.BooleanVar = var) -> None:
+                if v.get():
+                    if c not in self.visible_columns:
+                        self.visible_columns.insert(1, c)
+                else:
+                    if c in self.visible_columns:
+                        self.visible_columns.remove(c)
+                self._build_tree(self.visible_columns)
+                self.refresh()
+
+            menu.add_checkbutton(label=col.replace("_", " ").title(), variable=var, command=_toggle)
+        menu.tk_popup(self.winfo_pointerx(), self.winfo_pointery())
+
+    def _build_tree(self, columns: list[str]) -> None:
+        for child in self.tree_frame.winfo_children():
+            child.destroy()
+        self.visible_columns = columns
+        self.tree = ttk.Treeview(
+            self.tree_frame,
+            columns=columns,
+            show="headings",
+            height=14,
+        )
+        for col in columns:
+            heading = col.replace("_", " ").title()
+            self.tree.heading(col, text=heading, command=lambda c=col: self._sort_by(c))
+        widths = {
+            "name": 280,
+            "path_full": 0,
+            "ext": 70,
+            "size": 90,
+            "mtime": 140,
+            "tracks": 70,
+            "clips": 70,
+            "devices": 70,
+            "samples": 70,
+            "missing": 70,
+            "scope": 90,
+            "kind": 90,
+            "source": 260,
+        }
+        anchors = {
+            "size": "e",
+            "tracks": "center",
+            "clips": "center",
+            "devices": "center",
+            "samples": "center",
+            "missing": "center",
+            "ext": "center",
+        }
+        for col in columns:
+            width = widths.get(col, 120)
+            stretch = col not in {"path_full"}
+            self.tree.column(col, width=width, anchor=anchors.get(col, "w"), stretch=stretch)
+        self.tree.pack(fill="both", expand=True)
+        self.tree.bind("<<TreeviewSelect>>", self._on_select)
+
+    def _sort_by(self, column: str) -> None:
+        items = [(self.tree.set(k, column), k) for k in self.tree.get_children("")]
+        reverse = self._sort_state.get(column, False)
+
+        def to_number(val: str) -> float:
+            try:
+                return float(val)
+            except Exception:
+                return 0.0
+
+        if column in {"size", "tracks", "clips"}:
+            items.sort(key=lambda t: to_number(t[0]), reverse=reverse)
+        elif column in {"mtime"}:
+            items.sort(key=lambda t: to_number(t[0]), reverse=reverse)
+        else:
+            items.sort(key=lambda t: t[0].lower(), reverse=reverse)
+        for index, (_, k) in enumerate(items):
+            self.tree.move(k, "", index)
+        self._sort_state[column] = not reverse
+
+    def _truncate_path(self, path: str, max_len: int = 60) -> str:
+        if len(path) <= max_len:
+            return path
+        keep = max_len // 2
+        return f"{path[:keep]}…{path[-keep:]}"
+
+    def _set_detail_fields(self, fields: list[tuple[str, str]]) -> None:
+        for idx, (label, value) in enumerate(self.detail_rows):
+            if idx < len(fields):
+                label.configure(text=f"{fields[idx][0]}:")
+                value.configure(text=fields[idx][1])
+            else:
+                label.configure(text="")
+                value.configure(text="")
+
+    def _set_detail_message(self, message: str) -> None:
+        self._set_detail_fields([("Info", message)])
+
     def refresh(self) -> None:
         if self.app.current_scope and self.scope_var.get() != "all":
             if self.scope_var.get() != self.app.current_scope:
                 self.scope_var.set(self.app.current_scope)
         db_path = self.app.resolve_catalog_db_path()
         self.tree.delete(*self.tree.get_children())
-        self._set_detail("Select a document to view details.")
+        self._set_detail_message("Select an item to view details.")
         if not db_path or not db_path.exists():
             self.app.ensure_catalog_db()
             db_path = self.app.resolve_catalog_db_path()
             if not db_path or not db_path.exists():
-                self._set_detail(
+                self._set_detail_message(
                     f"No database found at {db_path}. Run a scan to populate data."
                 )
                 return
@@ -539,8 +678,12 @@ class CatalogPanel(tk.Frame):
         clauses = []
         params = []
         if term:
-            clauses.append("path LIKE ?")
-            params.append(f"%{term}%")
+            if scope == "preferences":
+                clauses.append("(source LIKE ? OR kind LIKE ?)")
+                params.extend([f"%{term}%", f"%{term}%"])
+            else:
+                clauses.append("path LIKE ?")
+                params.append(f"%{term}%")
         if self.filter_missing.get():
             clauses.append("missing_refs = 1")
         if self.filter_devices.get():
@@ -550,7 +693,22 @@ class CatalogPanel(tk.Frame):
 
         where_sql = " AND ".join(clauses) if clauses else "1=1"
 
-        if scope == "all":
+        if scope == "preferences":
+            sql = (
+                "SELECT kind, source, mtime, scanned_at "
+                "FROM ableton_prefs "
+                f"WHERE {where_sql} "
+                "ORDER BY mtime DESC LIMIT 500"
+            )
+        elif scope == "user_library":
+            sql = (
+                "SELECT path, ext, size, mtime "
+                "FROM file_index_user_library "
+                "WHERE kind != 'ableton_doc' "
+                f"AND {where_sql} "
+                "ORDER BY mtime DESC LIMIT 500"
+            )
+        elif scope == "all":
             sql = (
                 "SELECT path, ext, size, mtime, tracks_total, clips_total, "
                 "has_devices, has_samples, missing_refs, scanned_at, scope "
@@ -570,33 +728,51 @@ class CatalogPanel(tk.Frame):
         try:
             with sqlite3.connect(db_path) as conn:
                 for row in conn.execute(sql, params):
-                    self.tree.insert(
-                        "",
-                        "end",
-                        values=(
-                            row[0],
-                            row[1],
-                            row[2],
-                            row[3],
-                            row[4],
-                            row[5],
-                            "yes" if row[6] else "no",
-                            "yes" if row[7] else "no",
-                            "yes" if row[8] else "no",
-                            row[9],
-                            row[10],
-                        ),
-                    )
+                    if scope == "preferences":
+                        values = {
+                            "kind": row[0],
+                            "source": row[1],
+                            "mtime": str(row[2]),
+                            "scope": "preferences",
+                        }
+                    elif scope == "user_library":
+                        name = self._truncate_path(Path(row[0]).name)
+                        values = {
+                            "name": name,
+                            "path_full": row[0],
+                            "ext": row[1],
+                            "size": str(row[2]),
+                            "mtime": str(row[3]),
+                            "scope": "user_library",
+                        }
+                    else:
+                        name = self._truncate_path(Path(row[0]).name)
+                        values = {
+                            "name": name,
+                            "path_full": row[0],
+                            "ext": row[1],
+                            "size": str(row[2]),
+                            "mtime": str(row[3]),
+                            "tracks": str(row[4]),
+                            "clips": str(row[5]),
+                            "devices": "yes" if row[6] else "no",
+                            "samples": "yes" if row[7] else "no",
+                            "missing": "yes" if row[8] else "no",
+                            "scanned_at": str(row[9]),
+                            "scope": row[10],
+                        }
+                    row_values = [values.get(col, "") for col in self.visible_columns]
+                    self.tree.insert("", "end", values=row_values)
         except sqlite3.OperationalError as exc:
-            if "no such table: catalog_docs" in str(exc):
-                self._set_detail(
-                    "Catalog index not built. Updating database and retrying..."
+            if "no such table" in str(exc):
+                self._set_detail_message(
+                    "Catalog not built yet. Updating database and retrying..."
                 )
                 self.app.refresh_catalog_db()
                 return self.refresh()
-            self._set_detail(f"Failed to load catalog: {exc}")
+            self._set_detail_message(f"Failed to load catalog: {exc}")
         except Exception as exc:
-            self._set_detail(f"Failed to load catalog: {exc}")
+            self._set_detail_message(f"Failed to load catalog: {exc}")
 
     def _set_detail(self, text: str) -> None:
         self.detail_text.configure(state="normal")
@@ -611,16 +787,35 @@ class CatalogPanel(tk.Frame):
         values = self.tree.item(selection[0], "values")
         if not values:
             return
-        path = values[0]
-        scope = values[10] if len(values) > 10 else "live_recordings"
+        values_map = {col: values[idx] for idx, col in enumerate(self.visible_columns)}
+        scope = values_map.get("scope", "live_recordings")
+        path = values_map.get("path_full") or values_map.get("source") or values_map.get("name")
         suffix = "" if scope == "live_recordings" else f"_{scope}"
         db_path = self.app.resolve_catalog_db_path()
         if not db_path or not db_path.exists():
-            self._set_detail("No database found.")
+            self._set_detail_message("No database found.")
             return
         try:
             with sqlite3.connect(db_path) as conn:
                 conn.row_factory = sqlite3.Row
+                if scope == "preferences":
+                    row = conn.execute(
+                        "SELECT kind, source, mtime, payload_json FROM ableton_prefs WHERE source = ?",
+                        (values_map.get("source"),),
+                    ).fetchone()
+                    if not row:
+                        self._set_detail_message("Preference not found.")
+                        return
+                    payload = json.loads(row["payload_json"]) if row["payload_json"] else {}
+                    fields = [
+                        ("Kind", row["kind"]),
+                        ("Source", self._truncate_path(row["source"], 80)),
+                        ("Modified", str(row["mtime"])),
+                        ("Keys", ", ".join(sorted(payload.keys()))[:80]),
+                    ]
+                    self._set_detail_fields(fields)
+                    return
+
                 doc = conn.execute(
                     f"SELECT * FROM ableton_docs{suffix} WHERE path = ?", (path,)
                 ).fetchone()
@@ -648,11 +843,21 @@ class CatalogPanel(tk.Frame):
                     (path,),
                 ).fetchone()[0]
         except Exception as exc:
-            self._set_detail(f"Failed to load details: {exc}")
+            self._set_detail_message(f"Failed to load details: {exc}")
+            return
+
+        if not doc and scope == "user_library":
+            fields = [
+                ("Path", self._truncate_path(path, 80)),
+                ("Type", values_map.get("ext", "")),
+                ("Size", values_map.get("size", "")),
+                ("Modified", values_map.get("mtime", "")),
+            ]
+            self._set_detail_fields(fields)
             return
 
         if not doc:
-            self._set_detail("Document not found in database.")
+            self._set_detail_message("Document not found in database.")
             return
 
         audio_duration = ""
@@ -663,23 +868,21 @@ class CatalogPanel(tk.Frame):
             audio_rate = file_row["audio_sample_rate"] or ""
             audio_channels = file_row["audio_channels"] or ""
 
-        lines = [
-            f"Path: {doc['path']}",
-            f"Ext: {file_row['ext'] if file_row else ''}",
-            f"Size: {file_row['size'] if file_row else ''}",
-            f"Modified: {file_row['mtime'] if file_row else ''}",
-            f"Tracks: {doc['tracks_total']}",
-            f"Clips: {doc['clips_total']}",
-            f"Samples: {samples}",
-            f"Devices: {devices}",
-            f"Missing refs: {missing}",
-            f"Tempo: {doc['tempo']}",
-            f"Audio duration: {audio_duration}",
-            f"Audio rate: {audio_rate}",
-            f"Audio channels: {audio_channels}",
-            f"Scanned at: {doc['scanned_at']}",
+        fields = [
+            ("Path", self._truncate_path(doc["path"], 80)),
+            ("Ext", file_row["ext"] if file_row else ""),
+            ("Size", str(file_row["size"] if file_row else "")),
+            ("Modified", str(file_row["mtime"] if file_row else "")),
+            ("Tracks", str(doc["tracks_total"])),
+            ("Clips", str(doc["clips_total"])),
+            ("Devices", str(devices)),
+            ("Samples", str(samples)),
+            ("Missing", str(missing)),
+            ("Tempo", str(doc["tempo"])),
+            ("Audio dur", str(audio_duration)),
+            ("Audio rate", str(audio_rate)),
         ]
-        self._set_detail("\n".join(lines))
+        self._set_detail_fields(fields)
 
 
 class ScanPanel(ttk.LabelFrame):
@@ -1605,6 +1808,8 @@ class AbletoolsUI(tk.Tk):
         self.abletools_dir = ABLETOOLS_DIR
         self.active_root: Optional[Path] = None
         self.current_scope = "live_recordings"
+        self.log_path: Optional[Path] = None
+        self.logger = self._setup_logging()
 
         self._nav_buttons: dict[str, tk.Button] = {}
         self._views: dict[str, tk.Frame] = {}
@@ -1615,6 +1820,7 @@ class AbletoolsUI(tk.Tk):
         self._set_app_icon()
         self._refresh_prefs_cache()
         self._init_active_root()
+        self._scan_app_log()
 
     def _style(self) -> None:
         style = ttk.Style(self)
@@ -1881,6 +2087,7 @@ class AbletoolsUI(tk.Tk):
         view = self._views.get(name)
         if not view:
             return
+        self._log_event("NAV", f"show_view={name}")
         view.tkraise()
         for key, btn in self._nav_buttons.items():
             if key == name:
@@ -1901,6 +2108,7 @@ class AbletoolsUI(tk.Tk):
                     prefs.refresh()
                 except Exception as exc:
                     messagebox.showerror("Preferences", f"Failed to load: {exc}")
+                    self._log_event("ERROR", f"preferences refresh: {exc}")
 
     def refresh_dashboard(self) -> None:
         dashboard = self._views.get("dashboard")
@@ -2058,8 +2266,10 @@ class AbletoolsUI(tk.Tk):
         db_script = self.abletools_dir / "abletools_catalog_db.py"
         if not db_script.exists():
             messagebox.showerror("Catalog", "Database script not found.")
+            self._log_event("ERROR", "refresh_catalog_db: script missing")
             return
         catalog_dir.mkdir(parents=True, exist_ok=True)
+        self._log_event("DB", f"refresh_catalog_db: {catalog_dir}")
         try:
             proc = subprocess.run(
                 [sys.executable, str(db_script), str(catalog_dir), "--append"],
@@ -2069,21 +2279,25 @@ class AbletoolsUI(tk.Tk):
             )
         except Exception as exc:
             messagebox.showerror("Catalog", f"Failed to update DB:\n{exc}")
+            self._log_event("ERROR", f"refresh_catalog_db: {exc}")
             return
         if proc.returncode != 0:
             messagebox.showerror(
                 "Catalog", proc.stderr.strip() or "Database update failed."
             )
+            self._log_event("ERROR", f"refresh_catalog_db: {proc.stderr.strip()}")
 
     def run_analytics(self) -> None:
         db_path = self.resolve_catalog_db_path()
         if not db_path or not db_path.exists():
             messagebox.showinfo("Analytics", "No database found yet.")
+            self._log_event("ANALYTICS", "db missing")
             return
         self.refresh_catalog_db()
         analytics = self.abletools_dir / "abletools_analytics.py"
         if not analytics.exists():
             messagebox.showerror("Analytics", f"Missing analytics script:\n{analytics}")
+            self._log_event("ERROR", f"run_analytics: script missing {analytics}")
             return
         try:
             proc = subprocess.run(
@@ -2094,10 +2308,13 @@ class AbletoolsUI(tk.Tk):
             )
         except Exception as exc:
             messagebox.showerror("Analytics", f"Failed to run analytics:\n{exc}")
+            self._log_event("ERROR", f"run_analytics: {exc}")
             return
         if proc.returncode != 0:
             messagebox.showerror("Analytics", proc.stderr.strip() or "Analytics failed.")
+            self._log_event("ERROR", f"run_analytics: {proc.stderr.strip()}")
             return
+        self._log_event("ANALYTICS", "completed")
         messagebox.showinfo("Analytics", "Analytics updated.")
         self.refresh_dashboard()
 
@@ -2105,10 +2322,12 @@ class AbletoolsUI(tk.Tk):
         db_path = self.resolve_catalog_db_path()
         if not db_path or not db_path.exists():
             messagebox.showinfo("Maintenance", "No database found yet.")
+            self._log_event("MAINTENANCE", "db missing")
             return
         maintenance = self.abletools_dir / "abletools_maintenance.py"
         if not maintenance.exists():
             messagebox.showerror("Maintenance", f"Missing maintenance script:\n{maintenance}")
+            self._log_event("ERROR", f"run_maintenance: script missing {maintenance}")
             return
         try:
             proc = subprocess.run(
@@ -2119,10 +2338,13 @@ class AbletoolsUI(tk.Tk):
             )
         except Exception as exc:
             messagebox.showerror("Maintenance", f"Failed to run maintenance:\n{exc}")
+            self._log_event("ERROR", f"run_maintenance: {exc}")
             return
         if proc.returncode != 0:
             messagebox.showerror("Maintenance", proc.stderr.strip() or "Maintenance failed.")
+            self._log_event("ERROR", f"run_maintenance: {proc.stderr.strip()}")
             return
+        self._log_event("MAINTENANCE", "completed")
         messagebox.showinfo("Maintenance", "Database optimized.")
 
     def _refresh_prefs_cache(self) -> None:
@@ -2186,13 +2408,38 @@ class AbletoolsUI(tk.Tk):
             self.set_active_root(self.default_scan_root())
 
     def log_ui_error(self, message: str) -> None:
-        log_path = self.abletools_dir / ".abletools_catalog" / "ui_errors.log"
-        log_path.parent.mkdir(parents=True, exist_ok=True)
+        self._log_event("UI_ERROR", message)
+
+    def _setup_logging(self) -> logging.Logger:
+        cache_dir = self.catalog_dir()
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        self.log_path = cache_dir / "abletools.log"
+        logger = logging.getLogger("abletools")
+        logger.setLevel(logging.INFO)
+        if not logger.handlers:
+            handler = logging.FileHandler(self.log_path, encoding="utf-8")
+            formatter = logging.Formatter(
+                "%(asctime)s %(levelname)s %(message)s", "%Y-%m-%dT%H:%M:%S"
+            )
+            handler.setFormatter(formatter)
+            logger.addHandler(handler)
+        logger.info("App start")
+        return logger
+
+    def _log_event(self, kind: str, message: str) -> None:
+        if self.logger:
+            self.logger.info("%s: %s", kind, message)
+
+    def _scan_app_log(self) -> None:
+        if not self.log_path or not self.log_path.exists():
+            return
         try:
-            with log_path.open("a", encoding="utf-8") as handle:
-                handle.write(f"{datetime.now().isoformat()} {message}\n")
+            lines = self.log_path.read_text(encoding="utf-8").splitlines()
         except Exception:
-            pass
+            return
+        recent = [line for line in lines[-200:] if "ERROR" in line or "UI_ERROR" in line]
+        if recent:
+            self._log_event("LOG_SCAN", f"Found {len(recent)} recent error lines.")
 
 
 if __name__ == "__main__":

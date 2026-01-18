@@ -172,7 +172,6 @@ def create_schema(conn: sqlite3.Connection) -> None:
             CREATE INDEX IF NOT EXISTS idx_file_index_kind{suffix} ON file_index{suffix}(kind);
             CREATE INDEX IF NOT EXISTS idx_file_index_ext{suffix} ON file_index{suffix}(ext);
             CREATE INDEX IF NOT EXISTS idx_file_index_sha1{suffix} ON file_index{suffix}(sha1);
-            CREATE INDEX IF NOT EXISTS idx_file_index_path_hash{suffix} ON file_index{suffix}(path_hash);
             CREATE INDEX IF NOT EXISTS idx_ableton_docs_scanned_at{suffix} ON ableton_docs{suffix}(scanned_at);
             CREATE UNIQUE INDEX IF NOT EXISTS uq_doc_sample_refs{suffix} ON doc_sample_refs{suffix}(doc_path, sample_path);
             CREATE UNIQUE INDEX IF NOT EXISTS uq_doc_device_hints{suffix} ON doc_device_hints{suffix}(doc_path, device_hint);
@@ -362,6 +361,7 @@ def ensure_file_index_columns(conn: sqlite3.Connection, table: str) -> None:
     }
     for col, ddl in columns.items():
         ensure_column(conn, table, col, ddl)
+    conn.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_path_hash ON {table}(path_hash)")
 
 
 def ensure_ableton_docs_columns(conn: sqlite3.Connection, table: str) -> None:
@@ -419,7 +419,7 @@ def load_file_index(
                         kind, scanned_at, sha1, sha1_error,
                         audio_duration, audio_sample_rate, audio_channels, audio_bit_depth, audio_codec
                     )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 rows,
             )
@@ -442,7 +442,7 @@ def load_file_index(
                     kind, scanned_at, sha1, sha1_error,
                     audio_duration, audio_sample_rate, audio_channels, audio_bit_depth, audio_codec
                 )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             rows,
         )
