@@ -297,7 +297,7 @@ class DashboardPanel(tk.Frame):
         cards.pack(fill="x", padx=16)
         cards.columnconfigure((0, 1, 2, 3), weight=1)
 
-        self._card_sets = self._make_stat_card(cards, "Non-backup Sets", 0)
+        self._card_sets = self._make_stat_card(cards, "Total Sets", 0)
         self._card_set_size = self._make_stat_card(cards, "Set Size", 1)
         self._card_audio_size = self._make_stat_card(cards, "Audio Size", 2)
         self._card_missing_sets = self._make_stat_card(cards, "Sets Missing Refs", 3)
@@ -415,16 +415,23 @@ class DashboardPanel(tk.Frame):
             messagebox.showerror("Backup", f"Backup failed: {exc}")
             return
         label = "sets" if kind == "sets" else "audio files"
-        messagebox.showinfo(
-            "Backup",
-            f"Backed up {copied} {label}. Skipped {skipped} existing files.",
-        )
+        if copied > 0:
+            messagebox.showinfo(
+                "Backup",
+                f"Backed up {copied} {label} and created a zip archive. "
+                f"Skipped {skipped} existing files.",
+            )
+        else:
+            messagebox.showinfo(
+                "Backup",
+                f"No {label} copied. Skipped {skipped} existing files.",
+            )
 
     def refresh(self) -> None:
         scope = self._current_scope()
         self.scope_label.configure(text=f"Scope: {scope}")
         focus = self.app.load_dashboard_focus(scope)
-        self._card_sets.configure(text=str(focus.get("set_count", 0)))
+        self._card_sets.configure(text=str(focus.get("set_count_total", 0)))
         self._card_set_size.configure(text=format_bytes(focus.get("set_bytes", 0)))
         self._card_audio_size.configure(text=format_bytes(focus.get("audio_bytes", 0)))
         self._card_missing_sets.configure(text=str(focus.get("missing_sets", 0)))
@@ -3321,14 +3328,22 @@ class AbletoolsUI(tk.Tk):
         backup_clause = "lower(path) NOT LIKE ? AND lower(path) NOT LIKE ? AND path NOT GLOB ?"
         backup_params = ["%/backup/%", "%\\backup\\%", "*[[][0-9]*[]]*"]
         result = {
-            "set_count": 0,
+            "set_count_total": 0,
+            "set_count_non_backup": 0,
             "set_bytes": 0,
             "audio_bytes": 0,
             "missing_sets": 0,
         }
         try:
             with sqlite3.connect(db_path) as conn:
-                result["set_count"] = (
+                result["set_count_total"] = (
+                    conn.execute(
+                        f"SELECT COUNT(*) FROM file_index{suffix} "
+                        "WHERE ext IN ('.als', '.alc')",
+                    ).fetchone()[0]
+                    or 0
+                )
+                result["set_count_non_backup"] = (
                     conn.execute(
                         f"SELECT COUNT(*) FROM file_index{suffix} "
                         "WHERE ext IN ('.als', '.alc') AND " + backup_clause,
@@ -3387,7 +3402,9 @@ class AbletoolsUI(tk.Tk):
                 ).fetchall()
         except Exception:
             return 0, 0
-        dest_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        base_dir = dest_dir / "Abletools Backup" / f"{kind}_{timestamp}"
+        base_dir.mkdir(parents=True, exist_ok=True)
         for (path_str,) in rows:
             path = Path(path_str)
             if not path.exists():
@@ -3400,7 +3417,7 @@ class AbletoolsUI(tk.Tk):
                     rel = Path(path.name)
             else:
                 rel = Path(path.name)
-            target = dest_dir / rel
+            target = base_dir / rel
             if target.exists():
                 skipped += 1
                 continue
@@ -3410,6 +3427,11 @@ class AbletoolsUI(tk.Tk):
                 copied += 1
             except Exception:
                 skipped += 1
+        if copied > 0:
+            try:
+                shutil.make_archive(str(base_dir), "zip", root_dir=base_dir)
+            except Exception:
+                pass
         return copied, skipped
 
     def _open_db_location(self) -> None:
