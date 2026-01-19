@@ -824,12 +824,12 @@ class CatalogPanel(tk.Frame):
 
     def _default_columns_for_scope(self, scope: str) -> list[str]:
         if scope == "live_recordings":
-            return ["name", "mtime", "path_full", "scope"]
+            return ["name", "mtime", "path_full"]
         if scope == "user_library":
-            return ["name", "tracks", "clips", "mtime", "path_full", "scope"]
+            return ["name", "tracks", "clips", "mtime", "path_full"]
         if scope == "preferences":
-            return ["kind", "source", "mtime", "scope"]
-        return ["name", "mtime", "path_full", "scope"]
+            return ["kind", "source", "mtime"]
+        return ["name", "mtime", "path_full"]
 
     def _optional_columns_for_scope(self, scope: str) -> list[str]:
         if scope == "live_recordings":
