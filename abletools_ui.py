@@ -1232,6 +1232,13 @@ class ScanPanel(ttk.LabelFrame):
         self.deep_snapshot_var = tk.BooleanVar(value=False)
         self.xml_nodes_var = tk.BooleanVar(value=False)
         self.log_visible = tk.BooleanVar(value=True)
+        self.targeted_paths: list[Path] = []
+        self.targeted_struct_var = tk.BooleanVar(value=True)
+        self.targeted_clips_var = tk.BooleanVar(value=True)
+        self.targeted_devices_var = tk.BooleanVar(value=True)
+        self.targeted_routing_var = tk.BooleanVar(value=True)
+        self.targeted_refs_var = tk.BooleanVar(value=True)
+        self.targeted_summary_var = tk.StringVar(value="No targeted sets selected.")
 
         self._proc: subprocess.Popen | None = None
         self._q: queue.Queue[str] = queue.Queue()
@@ -1268,75 +1275,140 @@ class ScanPanel(ttk.LabelFrame):
         scope_menu.grid(row=0, column=1, sticky="w", padx=(0, 14))
         scope_menu.bind("<<ComboboxSelected>>", self._on_scope_change)
 
-        ttk.Checkbutton(
-            opts,
-            text="Incremental (skip unchanged)",
-            variable=self.incremental_var,
-        ).grid(row=0, column=2, sticky="w", padx=(0, 14))
-        ttk.Checkbutton(
-            opts,
-            text="Include media files",
-            variable=self.include_media_var,
-        ).grid(row=0, column=3, sticky="w", padx=(0, 14))
-        ttk.Checkbutton(
-            opts,
-            text="Compute hashes (slow)",
-            variable=self.hash_var,
-        ).grid(row=0, column=4, sticky="w")
-        ttk.Checkbutton(
-            opts,
-            text="Rehash unchanged",
-            variable=self.rehash_var,
-        ).grid(row=0, column=5, sticky="w", padx=(14, 0))
-        ttk.Checkbutton(
-            opts,
-            text="All files",
-            variable=self.all_files_var,
-        ).grid(row=0, column=6, sticky="w", padx=(14, 0))
-        ttk.Checkbutton(
-            opts,
-            text="Analyze audio",
-            variable=self.analyze_audio_var,
-        ).grid(row=0, column=7, sticky="w", padx=(14, 0))
+        full_frame = ttk.LabelFrame(opts, text="Full Scan (fast)", padding=10)
+        full_frame.grid(row=1, column=0, columnspan=8, sticky="we", pady=(10, 0))
+
+        ttk.Label(
+            full_frame,
+            text="Summary + hashes only. No detailed tags or per-set JSON.",
+            foreground=MUTED,
+        ).grid(row=0, column=0, columnspan=8, sticky="w", pady=(0, 6))
 
         ttk.Checkbutton(
-            opts,
-            text="Deep XML snapshot",
-            variable=self.deep_snapshot_var,
-        ).grid(row=1, column=0, sticky="w", padx=(0, 14), pady=(6, 0))
+            full_frame,
+            text="Incremental (skip unchanged)",
+            variable=self.incremental_var,
+        ).grid(row=1, column=0, sticky="w", padx=(0, 14))
         ttk.Checkbutton(
-            opts,
+            full_frame,
+            text="Include media files",
+            variable=self.include_media_var,
+        ).grid(row=1, column=1, sticky="w", padx=(0, 14))
+        ttk.Checkbutton(
+            full_frame,
+            text="Compute hashes (slow)",
+            variable=self.hash_var,
+        ).grid(row=1, column=2, sticky="w")
+        ttk.Checkbutton(
+            full_frame,
+            text="Rehash unchanged",
+            variable=self.rehash_var,
+        ).grid(row=1, column=3, sticky="w", padx=(14, 0))
+        ttk.Checkbutton(
+            full_frame,
+            text="All files",
+            variable=self.all_files_var,
+        ).grid(row=1, column=4, sticky="w", padx=(14, 0))
+        ttk.Checkbutton(
+            full_frame,
+            text="Analyze audio",
+            variable=self.analyze_audio_var,
+        ).grid(row=1, column=5, sticky="w", padx=(14, 0))
+
+        ttk.Checkbutton(
+            full_frame,
             text="Hash Ableton sets only",
             variable=self.hash_docs_var,
-        ).grid(row=1, column=1, sticky="w", padx=(0, 14), pady=(6, 0))
+        ).grid(row=2, column=0, sticky="w", padx=(0, 14), pady=(6, 0))
         ttk.Checkbutton(
-            opts,
+            full_frame,
             text="Changed-only scan",
             variable=self.changed_only_var,
-        ).grid(row=1, column=2, sticky="w", padx=(0, 14), pady=(6, 0))
+        ).grid(row=2, column=1, sticky="w", padx=(0, 14), pady=(6, 0))
         ttk.Checkbutton(
-            opts,
+            full_frame,
             text="Write checkpoints",
             variable=self.checkpoint_var,
-        ).grid(row=1, column=3, sticky="w", padx=(0, 14), pady=(6, 0))
+        ).grid(row=2, column=2, sticky="w", padx=(0, 14), pady=(6, 0))
         ttk.Checkbutton(
-            opts,
+            full_frame,
             text="Resume checkpoint",
             variable=self.resume_var,
-        ).grid(row=1, column=4, sticky="w", padx=(0, 14), pady=(6, 0))
+        ).grid(row=2, column=3, sticky="w", padx=(0, 14), pady=(6, 0))
+
+        targeted_frame = ttk.LabelFrame(opts, text="Targeted Scan (deep)", padding=10)
+        targeted_frame.grid(row=2, column=0, columnspan=8, sticky="we", pady=(12, 0))
+        ttk.Label(
+            targeted_frame,
+            text="Run on selected sets only. Writes per-set JSON and detailed tags.",
+            foreground=MUTED,
+        ).grid(row=0, column=0, columnspan=6, sticky="w", pady=(0, 6))
+
+        ttk.Button(
+            targeted_frame,
+            text="Select Sets...",
+            command=self._select_targeted_sets,
+            style="Ghost.TButton",
+        ).grid(row=1, column=0, sticky="w", padx=(0, 8))
+        ttk.Label(
+            targeted_frame,
+            textvariable=self.targeted_summary_var,
+            foreground=MUTED,
+        ).grid(row=1, column=1, columnspan=5, sticky="w")
+
+        ttk.Label(targeted_frame, text="Details:").grid(row=2, column=0, sticky="w", pady=(6, 0))
         ttk.Checkbutton(
-            opts,
+            targeted_frame,
+            text="Struct",
+            variable=self.targeted_struct_var,
+        ).grid(row=2, column=1, sticky="w", pady=(6, 0))
+        ttk.Checkbutton(
+            targeted_frame,
+            text="Clips",
+            variable=self.targeted_clips_var,
+        ).grid(row=2, column=2, sticky="w", pady=(6, 0))
+        ttk.Checkbutton(
+            targeted_frame,
+            text="Devices",
+            variable=self.targeted_devices_var,
+        ).grid(row=2, column=3, sticky="w", pady=(6, 0))
+        ttk.Checkbutton(
+            targeted_frame,
+            text="Routing",
+            variable=self.targeted_routing_var,
+        ).grid(row=2, column=4, sticky="w", pady=(6, 0))
+        ttk.Checkbutton(
+            targeted_frame,
+            text="Refs",
+            variable=self.targeted_refs_var,
+        ).grid(row=2, column=5, sticky="w", pady=(6, 0))
+
+        ttk.Checkbutton(
+            targeted_frame,
+            text="Deep XML snapshot",
+            variable=self.deep_snapshot_var,
+        ).grid(row=3, column=1, sticky="w", padx=(0, 14), pady=(6, 0))
+        ttk.Checkbutton(
+            targeted_frame,
             text="XML nodes (huge)",
             variable=self.xml_nodes_var,
-        ).grid(row=1, column=5, sticky="w", padx=(0, 14), pady=(6, 0))
+        ).grid(row=3, column=2, sticky="w", padx=(0, 14), pady=(6, 0))
 
         btns = ttk.Frame(self)
         btns.grid(row=2, column=0, columnspan=3, sticky="we", pady=(10, 0))
 
         self.start_btn = ttk.Button(
-            btns, text="Start Scan", command=self.start_scan, style="Accent.TButton"
+            btns, text="Run Full Scan", command=self.start_scan, style="Accent.TButton"
         )
         self.start_btn.pack(side="left")
+
+        self.targeted_btn = ttk.Button(
+            btns,
+            text="Run Targeted",
+            command=self.start_targeted_scan,
+            style="Ghost.TButton",
+        )
+        self.targeted_btn.pack(side="left", padx=(8, 0))
 
         self.cancel_btn = ttk.Button(
             btns,
@@ -1515,6 +1587,107 @@ class ScanPanel(ttk.LabelFrame):
         if root:
             self.root_var.set(str(root))
 
+    def _select_targeted_sets(self) -> None:
+        dialog = tk.Toplevel(self)
+        dialog.title("Select Sets for Targeted Scan")
+        dialog.configure(bg=BG)
+        dialog.geometry("980x640")
+        dialog.transient(self)
+
+        header = tk.Frame(dialog, bg=BG)
+        header.pack(fill="x", padx=12, pady=(12, 6))
+        tk.Label(header, text="Search: ", bg=BG, fg=TEXT).pack(side="left")
+        search_var = tk.StringVar(value="")
+        search_entry = tk.Entry(header, textvariable=search_var, width=40)
+        search_entry.pack(side="left", padx=(0, 12))
+
+        body = tk.Frame(dialog, bg=BG)
+        body.pack(fill="both", expand=True, padx=12, pady=(0, 12))
+        body.columnconfigure(0, weight=1)
+        body.rowconfigure(0, weight=1)
+
+        columns = ("name", "path", "mtime", "tracks", "clips")
+        tree = ttk.Treeview(body, columns=columns, show="headings", selectmode="extended")
+        for col in columns:
+            heading = col.replace("_", " ").title()
+            tree.heading(col, text=heading)
+            tree.column(col, anchor="w")
+        tree.column("name", width=220)
+        tree.column("path", width=420)
+        tree.column("mtime", width=140)
+        tree.column("tracks", width=70, anchor="center")
+        tree.column("clips", width=70, anchor="center")
+        tree.grid(row=0, column=0, sticky="nsew")
+        scroll = tk.Scrollbar(body, command=tree.yview)
+        tree.configure(yscrollcommand=scroll.set)
+        scroll.grid(row=0, column=1, sticky="ns")
+
+        sets = self.app.get_known_sets(self.scope_var.get())
+        rows: list[tuple[str, dict[str, str]]] = []
+        for item in sets:
+            rows.append(
+                (
+                    tree.insert(
+                        "",
+                        "end",
+                        values=(
+                            item.get("name", ""),
+                            item.get("path", ""),
+                            self._format_mtime(item.get("mtime")),
+                            item.get("tracks", ""),
+                            item.get("clips", ""),
+                        ),
+                    ),
+                    item,
+                )
+            )
+
+        def _apply_filter(_event: object | None = None) -> None:
+            query = search_var.get().strip().lower()
+            for iid, meta in rows:
+                hay = f"{meta.get('name','')} {meta.get('path','')}".lower()
+                if query and query not in hay:
+                    tree.detach(iid)
+                else:
+                    tree.reattach(iid, "", "end")
+
+        search_entry.bind("<KeyRelease>", _apply_filter)
+
+        result: dict[str, Optional[list[Path]]] = {"paths": None}
+
+        def _apply() -> None:
+            picks = tree.selection()
+            if not picks:
+                messagebox.showinfo("Targeted Scan", "Select one or more sets.")
+                return
+            selected_paths: list[Path] = []
+            for iid in picks:
+                values = tree.item(iid, "values")
+                path = values[1]
+                if path:
+                    selected_paths.append(Path(path))
+            result["paths"] = selected_paths
+            dialog.destroy()
+
+        def _cancel() -> None:
+            dialog.destroy()
+
+        footer = tk.Frame(dialog, bg=BG)
+        footer.pack(fill="x", padx=12, pady=(0, 12))
+        ttk.Button(footer, text="Use Selected", command=_apply, style="Accent.TButton").pack(
+            side="left"
+        )
+        ttk.Button(footer, text="Cancel", command=_cancel, style="Ghost.TButton").pack(
+            side="left", padx=(8, 0)
+        )
+
+        dialog.grab_set()
+        self.wait_window(dialog)
+
+        if result["paths"]:
+            self.targeted_paths = result["paths"] or []
+            self.targeted_summary_var.set(f"{len(self.targeted_paths)} set(s) selected.")
+
     def _append_log(self, line: str) -> None:
         self._handle_progress_line(line)
         stamp = datetime.now().strftime("%H:%M:%S")
@@ -1692,6 +1865,7 @@ class ScanPanel(ttk.LabelFrame):
     def _set_running(self, running: bool) -> None:
         def _apply() -> None:
             self.start_btn.configure(state="disabled" if running else "normal")
+            self.targeted_btn.configure(state="disabled" if running else "normal")
             self.cancel_btn.configure(state="normal" if running else "disabled")
             if running:
                 self.progress.start(10)
@@ -1772,6 +1946,76 @@ class ScanPanel(ttk.LabelFrame):
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         log_path = self.app.catalog_dir() / f"scan_log_{timestamp}.txt"
+        try:
+            self._log_file = log_path.open("w", encoding="utf-8")
+            self._log_file_path = log_path
+        except Exception:
+            self._log_file = None
+            self._log_file_path = None
+        self._enqueue(f"Logging to: {log_path}")
+
+        t = threading.Thread(
+            target=self._scan_thread, args=(cmds, self.app.abletools_dir), daemon=True
+        )
+        t.start()
+
+    def start_targeted_scan(self) -> None:
+        if self._proc is not None:
+            return
+        if not self.targeted_paths:
+            messagebox.showinfo("Targeted Scan", "No sets selected yet.")
+            return
+
+        details = []
+        if self.targeted_struct_var.get():
+            details.append("struct")
+        if self.targeted_clips_var.get():
+            details.append("clips")
+        if self.targeted_devices_var.get():
+            details.append("devices")
+        if self.targeted_routing_var.get():
+            details.append("routing")
+        if self.targeted_refs_var.get():
+            details.append("refs")
+        if not details:
+            messagebox.showinfo("Targeted Scan", "Select at least one detail group.")
+            return
+
+        cmds: list[list[str]] = []
+        scan_script = self.app.scan_script_path()
+        for target in self.targeted_paths:
+            cmd = [
+                sys.executable,
+                str(scan_script),
+                str(target),
+                "--scope",
+                self.scope_var.get(),
+                "--mode",
+                "targeted",
+                "--details",
+                ",".join(details),
+                "--out",
+                str(self.app.catalog_dir()),
+                "--incremental",
+                "--only-known",
+                "--progress",
+                "--verbose",
+            ]
+            if self.deep_snapshot_var.get():
+                cmd.append("--deep-xml-snapshot")
+            if self.xml_nodes_var.get():
+                cmd.append("--xml-nodes")
+            cmds.append(cmd)
+
+        self.status_var.set("Running targeted...")
+        self._set_running(True)
+        self.progress.configure(mode="indeterminate")
+        self._progress_total = None
+        if self.log_visible.get():
+            self.log_text.delete("1.0", "end")
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_path = self.app.catalog_dir() / f"scan_log_targeted_{timestamp}.txt"
         try:
             self._log_file = log_path.open("w", encoding="utf-8")
             self._log_file_path = log_path
@@ -3031,6 +3275,38 @@ class AbletoolsUI(tk.Tk):
             self.after(0, messagebox.showinfo, "Scan Selected", "Targeted scan completed.")
 
         threading.Thread(target=_run, daemon=True).start()
+
+    def get_known_sets(self, scope: str) -> list[dict[str, str]]:
+        db_path = self.resolve_catalog_db_path()
+        if not db_path or not db_path.exists():
+            return []
+        suffix = "" if scope == "live_recordings" else f"_{scope}"
+        items: list[dict[str, str]] = []
+        query = f"""
+            SELECT d.path, d.tracks_total, d.clips_total, f.mtime
+            FROM ableton_docs{suffix} d
+            JOIN file_index{suffix} f ON f.path = d.path
+            WHERE f.ext IN ('.als', '.alc')
+            ORDER BY f.mtime DESC
+            LIMIT 2000
+        """
+        try:
+            with sqlite3.connect(db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                for row in conn.execute(query).fetchall():
+                    path = row["path"]
+                    items.append(
+                        {
+                            "path": path,
+                            "name": Path(path).name,
+                            "mtime": row["mtime"],
+                            "tracks": row["tracks_total"],
+                            "clips": row["clips_total"],
+                        }
+                    )
+        except Exception as exc:
+            self._log_event("ERROR", f"get_known_sets: {exc}")
+        return items
 
     def audit_zero_tracks(self) -> list[str]:
         db_path = self.resolve_catalog_db_path()
