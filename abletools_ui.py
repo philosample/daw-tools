@@ -348,6 +348,12 @@ class DashboardPanel(tk.Frame):
             command=self._backup_audio,
             style="Ghost.TButton",
         ).pack(side="left", padx=(8, 0))
+        ttk.Button(
+            backup_actions,
+            text="Clean Catalog",
+            command=self._cleanup_catalog,
+            style="Ghost.TButton",
+        ).pack(side="left", padx=(8, 0))
 
         analytics = tk.Frame(self, bg=BG)
         analytics.pack(fill="x", padx=16, pady=(0, 16))
@@ -403,6 +409,72 @@ class DashboardPanel(tk.Frame):
 
     def _backup_audio(self) -> None:
         self._run_backup("audio")
+
+    def _cleanup_catalog(self) -> None:
+        dialog = tk.Toplevel(self)
+        dialog.title("Clean Catalog")
+        dialog.configure(bg=BG)
+        dialog.geometry("520x360")
+        dialog.transient(self)
+
+        tk.Label(
+            dialog,
+            text="Select items to remove from .abletools_catalog",
+            font=H2_FONT,
+            fg=TEXT,
+            bg=BG,
+        ).pack(anchor="w", padx=16, pady=(16, 8))
+
+        options_frame = tk.Frame(dialog, bg=BG)
+        options_frame.pack(fill="both", expand=True, padx=16, pady=(0, 12))
+
+        def _opt(label: str, default: bool) -> tk.BooleanVar:
+            var = tk.BooleanVar(value=default)
+            tk.Checkbutton(
+                options_frame,
+                text=label,
+                variable=var,
+                bg=BG,
+                fg=TEXT,
+                activebackground=BG,
+                activeforeground=TEXT,
+                selectcolor=BG_NAV,
+            ).pack(anchor="w", pady=2)
+            return var
+
+        opts = {
+            "logs": _opt("Old scan logs + audit reports", True),
+            "xml_nodes": _opt("XML nodes JSONL (large)", True),
+            "device_params": _opt("Device params JSONL (large)", True),
+            "refs_graph": _opt("Refs graph JSONL", False),
+            "struct": _opt("Struct/clip/routing JSONL", False),
+            "scan_state": _opt("Scan + dir state (incremental cache)", False),
+        }
+
+        footer = tk.Frame(dialog, bg=BG)
+        footer.pack(fill="x", padx=16, pady=(0, 16))
+
+        def _run() -> None:
+            selected = {k: v.get() for k, v in opts.items()}
+            removed, bytes_freed = self.app.cleanup_catalog(selected)
+            messagebox.showinfo(
+                "Clean Catalog",
+                f"Removed {removed} files, freed {format_bytes(bytes_freed)}.",
+            )
+            dialog.destroy()
+
+        def _cancel() -> None:
+            dialog.destroy()
+
+        ttk.Button(footer, text="Clean", command=_run, style="Accent.TButton").pack(
+            side="left"
+        )
+        ttk.Button(footer, text="Cancel", command=_cancel, style="Ghost.TButton").pack(
+            side="left", padx=(8, 0)
+        )
+
+        dialog.grab_set()
+        self.wait_window(dialog)
 
     def _run_backup(self, kind: str) -> None:
         scope = self._current_scope()
@@ -3439,6 +3511,61 @@ class AbletoolsUI(tk.Tk):
             except Exception:
                 pass
         return copied, skipped
+
+    def cleanup_catalog(self, options: dict[str, bool]) -> tuple[int, int]:
+        catalog_dir = self.catalog_dir()
+        if not catalog_dir.exists():
+            return 0, 0
+        removed = 0
+        bytes_freed = 0
+
+        def _remove(path: Path) -> None:
+            nonlocal removed, bytes_freed
+            try:
+                bytes_freed += path.stat().st_size
+            except OSError:
+                pass
+            try:
+                path.unlink()
+                removed += 1
+            except OSError:
+                pass
+
+        if options.get("logs"):
+            for path in catalog_dir.glob("scan_log_*.txt"):
+                _remove(path)
+            for path in catalog_dir.glob("scan_log_targeted_*.txt"):
+                _remove(path)
+            for path in catalog_dir.glob("missing_refs_audit_*.txt"):
+                _remove(path)
+
+        if options.get("xml_nodes"):
+            for path in catalog_dir.glob("ableton_xml_nodes*.jsonl"):
+                _remove(path)
+
+        if options.get("device_params"):
+            for path in catalog_dir.glob("ableton_device_params*.jsonl"):
+                _remove(path)
+
+        if options.get("refs_graph"):
+            for path in catalog_dir.glob("refs_graph*.jsonl"):
+                _remove(path)
+
+        if options.get("struct"):
+            for pattern in (
+                "ableton_struct*.jsonl",
+                "ableton_clip_details*.jsonl",
+                "ableton_routing_details*.jsonl",
+            ):
+                for path in catalog_dir.glob(pattern):
+                    _remove(path)
+
+        if options.get("scan_state"):
+            for pattern in ("scan_state*.json", "dir_state*.json", "scan_checkpoint*.json"):
+                for path in catalog_dir.glob(pattern):
+                    _remove(path)
+
+        return removed, bytes_freed
 
     def _open_db_location(self) -> None:
         db_path = self.resolve_catalog_db_path()
