@@ -1622,7 +1622,15 @@ class ScanPanel(ttk.LabelFrame):
         tree.configure(yscrollcommand=scroll.set)
         scroll.grid(row=0, column=1, sticky="ns")
 
-        sets = self.app.get_known_sets(self.scope_var.get())
+        scope = self.scope_var.get()
+        if scope == "all":
+            scope = "live_recordings"
+        sets = self.app.get_known_sets(scope)
+        if not sets:
+            messagebox.showinfo(
+                "Targeted Scan",
+                "No sets found yet. Run a full scan first.",
+            )
         rows: list[tuple[str, dict[str, str]]] = []
         for item in sets:
             rows.append(
@@ -1633,7 +1641,7 @@ class ScanPanel(ttk.LabelFrame):
                         values=(
                             item.get("name", ""),
                             item.get("path", ""),
-                            self._format_mtime(item.get("mtime")),
+                            self.app._format_mtime(item.get("mtime")),
                             item.get("tracks", ""),
                             item.get("clips", ""),
                         ),
@@ -3280,6 +3288,8 @@ class AbletoolsUI(tk.Tk):
         db_path = self.resolve_catalog_db_path()
         if not db_path or not db_path.exists():
             return []
+        if scope == "all":
+            scope = "live_recordings"
         suffix = "" if scope == "live_recordings" else f"_{scope}"
         items: list[dict[str, str]] = []
         query = f"""
