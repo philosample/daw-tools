@@ -199,7 +199,24 @@ def main() -> int:
                 file=rel,
                 line=1,
                 note="schema file",
-                tests=["./scripts/test_full_scan.sh", "./scripts/test_targeted_scan.sh"],
+                tests=[
+                    "pytest -q tests/test_schema_fixtures.py",
+                    "./scripts/test_full_scan.sh",
+                    "./scripts/test_targeted_scan.sh",
+                ],
+            )
+        )
+    sql_paths = list(ROOT.rglob("*.sql"))
+    for sql_path in sql_paths:
+        rel = relpath(sql_path)
+        items.append(
+            Item(
+                kind="sql_file",
+                name=sql_path.name,
+                file=rel,
+                line=1,
+                note="sql file",
+                tests=["pytest -q tests/test_catalog_db.py"],
             )
         )
     write_yaml(items, Path(args.map_out))

@@ -9,17 +9,26 @@ from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SQL_RE = re.compile(r"\\b(SELECT|INSERT|UPDATE|DELETE|WITH)\\b", re.IGNORECASE)
-SQL_STRIP_RE = re.compile(r"\\s+")
+SQL_RE = re.compile(r"\b(SELECT|INSERT|UPDATE|DELETE|WITH)\b", re.IGNORECASE)
+SQL_STRIP_RE = re.compile(r"\s+")
 TEST_ITEM_PREFIXES = (
     "abletools_",
     "ramify_core.py",
     "ableton_ramify.py",
 )
+CLI_TESTS = {
+    "abletools_scan.py": ["./scripts/test_full_scan.sh", "./scripts/test_targeted_scan.sh"],
+    "abletools_schema_validate.py": ["python3 abletools_schema_validate.py --help"],
+    "abletools_catalog_db.py": ["python3 abletools_catalog_db.py --help"],
+    "abletools_analytics.py": ["python3 abletools_analytics.py --help"],
+    "abletools_maintenance.py": ["python3 abletools_maintenance.py --help"],
+}
 
 
 def is_test_item_file(path: str) -> bool:
     if path.startswith("schemas/") and path.endswith(".schema.json"):
+        return True
+    if path.endswith(".sql"):
         return True
     name = Path(path).name
     if name.startswith(TEST_ITEM_PREFIXES):
@@ -227,6 +236,32 @@ def build_queries_for_file(path: Path) -> list[dict]:
     return queries
 
 
+def detect_cli_changes(files: list[str], changed_lines: dict[str, set[int]]) -> list[str]:
+    tests: list[str] = []
+    for file in files:
+        if file not in CLI_TESTS:
+            continue
+        path = ROOT / file
+        if not path.exists():
+            continue
+        lines = changed_lines.get(file, set())
+        if not lines:
+            continue
+        try:
+            text_lines = path.read_text(encoding="utf-8").splitlines()
+        except Exception:
+            continue
+        for line_no in lines:
+            if line_no - 1 < 0 or line_no - 1 >= len(text_lines):
+                continue
+            if "add_argument" in text_lines[line_no - 1]:
+                for cmd in CLI_TESTS[file]:
+                    if cmd not in tests:
+                        tests.append(cmd)
+                break
+    return tests
+
+
 def detect_changed_items(
     map_items: list[CoverageItem],
     changed_files: list[str],
@@ -288,6 +323,9 @@ def detect_changed_items(
         for test in item.tests:
             if test not in tests:
                 tests.append(test)
+    for test in detect_cli_changes(changed_files, changed_lines):
+        if test not in tests:
+            tests.append(test)
 
     return {"tests": tests, "missing": missing}
 

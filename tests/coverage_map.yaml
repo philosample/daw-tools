@@ -1946,6 +1946,7 @@ items:
     line: 1
     note: schema file
     tests:
+      - pytest -q tests/test_schema_fixtures.py
       - ./scripts/test_full_scan.sh
       - ./scripts/test_targeted_scan.sh
   - kind: schema
@@ -1954,6 +1955,7 @@ items:
     line: 1
     note: schema file
     tests:
+      - pytest -q tests/test_schema_fixtures.py
       - ./scripts/test_full_scan.sh
       - ./scripts/test_targeted_scan.sh
   - kind: schema
@@ -1962,6 +1964,7 @@ items:
     line: 1
     note: schema file
     tests:
+      - pytest -q tests/test_schema_fixtures.py
       - ./scripts/test_full_scan.sh
       - ./scripts/test_targeted_scan.sh
   - kind: schema
@@ -1970,6 +1973,7 @@ items:
     line: 1
     note: schema file
     tests:
+      - pytest -q tests/test_schema_fixtures.py
       - ./scripts/test_full_scan.sh
       - ./scripts/test_targeted_scan.sh
   - kind: schema
@@ -1978,6 +1982,7 @@ items:
     line: 1
     note: schema file
     tests:
+      - pytest -q tests/test_schema_fixtures.py
       - ./scripts/test_full_scan.sh
       - ./scripts/test_targeted_scan.sh
   - kind: schema
@@ -1986,6 +1991,7 @@ items:
     line: 1
     note: schema file
     tests:
+      - pytest -q tests/test_schema_fixtures.py
       - ./scripts/test_full_scan.sh
       - ./scripts/test_targeted_scan.sh
   - kind: schema
@@ -1994,6 +2000,7 @@ items:
     line: 1
     note: schema file
     tests:
+      - pytest -q tests/test_schema_fixtures.py
       - ./scripts/test_full_scan.sh
       - ./scripts/test_targeted_scan.sh
   - kind: schema
@@ -2002,6 +2009,7 @@ items:
     line: 1
     note: schema file
     tests:
+      - pytest -q tests/test_schema_fixtures.py
       - ./scripts/test_full_scan.sh
       - ./scripts/test_targeted_scan.sh
   - kind: schema
@@ -2010,6 +2018,7 @@ items:
     line: 1
     note: schema file
     tests:
+      - pytest -q tests/test_schema_fixtures.py
       - ./scripts/test_full_scan.sh
       - ./scripts/test_targeted_scan.sh
   - kind: schema
@@ -2018,6 +2027,7 @@ items:
     line: 1
     note: schema file
     tests:
+      - pytest -q tests/test_schema_fixtures.py
       - ./scripts/test_full_scan.sh
       - ./scripts/test_targeted_scan.sh
   - kind: schema
@@ -2026,5 +2036,6 @@ items:
     line: 1
     note: schema file
     tests:
+      - pytest -q tests/test_schema_fixtures.py
       - ./scripts/test_full_scan.sh
       - ./scripts/test_targeted_scan.sh

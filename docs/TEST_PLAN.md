@@ -40,6 +40,7 @@
   - One ALS test file.
   - A fake Preferences.cfg and Options.txt.
   - Mixed file types and symlinks.
+  - Schema fixtures under `tests/fixtures/schemas` for every JSON/JSONL schema.
 - Harness scripts:
   - `scripts/test_full_scan.sh`
   - `scripts/test_targeted_scan.sh`
@@ -55,6 +56,8 @@
 - Current coverage:
   - Python functions/classes via AST + diff line ranges.
   - SQL strings from literals, simple concatenation, and f-strings in Python.
+  - External `.sql` file changes trigger catalog coverage checks.
+  - CLI `add_argument` changes trigger entrypoint checks (`--help` or harness runs).
   - Schema files in `schemas/*.schema.json`.
   - Non-test-item files are ignored by the detector to avoid false positives.
 - Known gaps (add when they become common):
