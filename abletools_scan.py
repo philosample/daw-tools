@@ -178,6 +178,7 @@ def write_scan_summary(
     refs_missing: int,
     top_dirs: Counter[str],
     scope: str,
+    mode: str,
     all_files: bool,
     skipped_dirs: int,
 ) -> Path:
@@ -187,6 +188,7 @@ def write_scan_summary(
         "root": str(root),
         "out": str(out_dir),
         "scope": scope,
+        "mode": mode,
         "started_at": started_ts,
         "finished_at": finished_ts,
         "generated_at": _now_iso_local(),
@@ -683,6 +685,20 @@ def main(argv: list[str]) -> int:
         help="Catalog scope (default: live_recordings)",
     )
     ap.add_argument(
+        "--mode",
+        choices=["full", "targeted"],
+        default="full",
+        help="Scan mode: full = summary/hashes only, targeted = detailed per-set scan.",
+    )
+    ap.add_argument(
+        "--details",
+        default="all",
+        help=(
+            "Targeted detail groups (comma list): struct, clips, devices, routing, refs. "
+            "Use 'all' for everything."
+        ),
+    )
+    ap.add_argument(
         "--only-known",
         action="store_true",
         help="Limit scanning to known Ableton and media extensions.",
@@ -778,8 +794,18 @@ def main(argv: list[str]) -> int:
         args.incremental = False
         args.changed_only = False
         args.hash_docs_only = True
+    if args.mode == "full" and args.deep_xml_snapshot:
+        print("ERROR: deep XML snapshot is only supported in targeted mode.", file=sys.stderr)
+        return 2
 
     root = Path(args.root).expanduser().resolve()
+    target_files: Optional[list[Path]] = None
+    if root.exists() and root.is_file():
+        if args.mode != "targeted":
+            print("ERROR: file path scans are only supported in targeted mode.", file=sys.stderr)
+            return 2
+        target_files = [root]
+        root = root.parent
     if not root.exists() or not root.is_dir():
         print(f"ERROR: root is not a folder: {root}", file=sys.stderr)
         return 2
@@ -799,6 +825,7 @@ def main(argv: list[str]) -> int:
     refs_path = out_dir / f"refs_graph{suffix}.jsonl"
     state_path = out_dir / f"scan_state{suffix}.json"
     dir_state_path = out_dir / f"dir_state{suffix}.json"
+    per_doc_dir = out_dir / "sets" / scope
 
     state = load_state(state_path)
     dir_state = load_state(dir_state_path)
@@ -840,35 +867,63 @@ def main(argv: list[str]) -> int:
             resume_remaining = 0
 
     sort_entries = bool(args.checkpoint or args.resume)
-    use_dir_state = args.incremental and not args.changed_only
+    use_dir_state = args.incremental and not args.changed_only and target_files is None
 
     total_files = None
+    detail_groups = set()
+    if args.mode == "targeted":
+        if args.details.strip().lower() == "all":
+            detail_groups = {"struct", "clips", "devices", "routing", "refs"}
+        else:
+            detail_groups = {d.strip().lower() for d in args.details.split(",") if d.strip()}
+    write_struct = args.mode == "targeted" and "struct" in detail_groups
+    write_clips = args.mode == "targeted" and "clips" in detail_groups
+    write_devices = args.mode == "targeted" and "devices" in detail_groups
+    write_routing = args.mode == "targeted" and "routing" in detail_groups
+    write_refs = args.mode == "targeted" and "refs" in detail_groups
+    write_per_doc = args.mode == "targeted"
+    if args.mode == "full":
+        args.xml_nodes = False
     if args.progress:
         print("[progress] status=counting")
-        total_files = count_files(
-            root,
-            dir_state,
-            use_dir_state,
-            all_files,
-            wanted_exts,
-            sort_entries=sort_entries,
-        )
+        if target_files:
+            total_files = len(target_files)
+        else:
+            total_files = count_files(
+                root,
+                dir_state,
+                use_dir_state,
+                all_files,
+                wanted_exts,
+                sort_entries=sort_entries,
+            )
         print(f"[progress] total={total_files}")
 
-    for entry in iter_files(
-        root, dir_state, dir_updates, use_dir_state, skipped_dirs, sort_entries=sort_entries
-    ):
+    entries = (
+        target_files
+        if target_files is not None
+        else iter_files(
+            root, dir_state, dir_updates, use_dir_state, skipped_dirs, sort_entries=sort_entries
+        )
+    )
+    for entry in entries:
         if resume_remaining > 0:
             resume_remaining -= 1
             continue
         scanned += 1
-        p = Path(entry.path)
+        if isinstance(entry, os.DirEntry):
+            p = Path(entry.path)
+        else:
+            p = Path(entry)
         ext = p.suffix.lower()
         if not all_files and ext not in wanted_exts:
             continue
 
         try:
-            st = entry.stat(follow_symlinks=False)
+            if isinstance(entry, os.DirEntry):
+                st = entry.stat(follow_symlinks=False)
+            else:
+                st = p.stat()
         except (FileNotFoundError, OSError):
             continue
 
@@ -882,7 +937,7 @@ def main(argv: list[str]) -> int:
         mode = int(getattr(st, "st_mode", 0))
         uid = int(getattr(st, "st_uid", 0))
         gid = int(getattr(st, "st_gid", 0))
-        is_symlink = entry.is_symlink()
+        is_symlink = entry.is_symlink() if isinstance(entry, os.DirEntry) else p.is_symlink()
         symlink_target = None
         if is_symlink:
             try:
@@ -938,7 +993,7 @@ def main(argv: list[str]) -> int:
             "gid": gid,
             "is_symlink": bool(is_symlink),
             "symlink_target": symlink_target,
-            "name": entry.name,
+            "name": p.name,
             "parent": str(p.parent),
             "mime": MIME_CACHE.setdefault(ext, mimetypes.guess_type(p.name)[0]),
             "kind": classify(ext),
@@ -991,10 +1046,11 @@ def main(argv: list[str]) -> int:
                 summary = parse_ableton_doc(text)
                 struct_payload = {}
                 struct_error = None
-                try:
-                    struct_payload = parse_ableton_xml(text)
-                except Exception as exc:
-                    struct_error = str(exc)
+                if write_struct or write_clips or write_devices or write_routing or args.xml_nodes:
+                    try:
+                        struct_payload = parse_ableton_xml(text)
+                    except Exception as exc:
+                        struct_error = str(exc)
 
                 doc = {
                     "path": rel,
@@ -1004,24 +1060,9 @@ def main(argv: list[str]) -> int:
                     "summary": summary,
                 }
                 write_jsonl(docs_path, doc)
-                write_jsonl(
-                    struct_path,
-                    {
-                        "path": rel,
-                        "ext": ext,
-                        "kind": "ableton_doc" if ext in ABLETON_DOC_EXTS else "ableton_artifact",
-                        "scanned_at": started,
-                        "parse_method": "xml" if not struct_error else "xml_error",
-                        "error": struct_error,
-                        "tracks": struct_payload.get("tracks", []),
-                        "clips": struct_payload.get("clips", []),
-                        "devices": struct_payload.get("devices", []),
-                        "routings": struct_payload.get("routings", []),
-                    },
-                )
-                for detail in struct_payload.get("clip_details", []) or []:
+                if write_struct:
                     write_jsonl(
-                        clip_details_path,
+                        struct_path,
                         {
                             "path": rel,
                             "ext": ext,
@@ -1029,46 +1070,67 @@ def main(argv: list[str]) -> int:
                             if ext in ABLETON_DOC_EXTS
                             else "ableton_artifact",
                             "scanned_at": started,
-                            "clip_index": detail.get("index"),
-                            "track_index": detail.get("track_index"),
-                            "clip_type": detail.get("type"),
-                            "name": detail.get("name"),
-                            "details": detail.get("details") or {},
+                            "parse_method": "xml" if not struct_error else "xml_error",
+                            "error": struct_error,
+                            "tracks": struct_payload.get("tracks", []),
+                            "clips": struct_payload.get("clips", []),
+                            "devices": struct_payload.get("devices", []),
+                            "routings": struct_payload.get("routings", []),
                         },
                     )
-                for param in struct_payload.get("device_params", []) or []:
-                    write_jsonl(
-                        device_params_path,
-                        {
-                            "path": rel,
-                            "ext": ext,
-                            "kind": "ableton_doc"
-                            if ext in ABLETON_DOC_EXTS
-                            else "ableton_artifact",
-                            "scanned_at": started,
-                            "device_index": param.get("device_index"),
-                            "track_index": param.get("track_index"),
-                            "param_type": param.get("type"),
-                            "name": param.get("name"),
-                            "param": param.get("param") or {},
-                        },
-                    )
-                for routing in struct_payload.get("routings", []) or []:
-                    write_jsonl(
-                        routing_details_path,
-                        {
-                            "path": rel,
-                            "ext": ext,
-                            "kind": "ableton_doc"
-                            if ext in ABLETON_DOC_EXTS
-                            else "ableton_artifact",
-                            "scanned_at": started,
-                            "track_index": routing.get("track_index"),
-                            "direction": routing.get("direction"),
-                            "value": routing.get("value"),
-                            "meta": routing.get("meta") or {},
-                        },
-                    )
+                if write_clips:
+                    for detail in struct_payload.get("clip_details", []) or []:
+                        write_jsonl(
+                            clip_details_path,
+                            {
+                                "path": rel,
+                                "ext": ext,
+                                "kind": "ableton_doc"
+                                if ext in ABLETON_DOC_EXTS
+                                else "ableton_artifact",
+                                "scanned_at": started,
+                                "clip_index": detail.get("index"),
+                                "track_index": detail.get("track_index"),
+                                "clip_type": detail.get("type"),
+                                "name": detail.get("name"),
+                                "details": detail.get("details") or {},
+                            },
+                        )
+                if write_devices:
+                    for param in struct_payload.get("device_params", []) or []:
+                        write_jsonl(
+                            device_params_path,
+                            {
+                                "path": rel,
+                                "ext": ext,
+                                "kind": "ableton_doc"
+                                if ext in ABLETON_DOC_EXTS
+                                else "ableton_artifact",
+                                "scanned_at": started,
+                                "device_index": param.get("device_index"),
+                                "track_index": param.get("track_index"),
+                                "param_type": param.get("type"),
+                                "name": param.get("name"),
+                                "param": param.get("param") or {},
+                            },
+                        )
+                if write_routing:
+                    for routing in struct_payload.get("routings", []) or []:
+                        write_jsonl(
+                            routing_details_path,
+                            {
+                                "path": rel,
+                                "ext": ext,
+                                "kind": "ableton_doc"
+                                if ext in ABLETON_DOC_EXTS
+                                else "ableton_artifact",
+                                "scanned_at": started,
+                                "track_index": routing.get("track_index"),
+                                "direction": routing.get("direction"),
+                                "value": routing.get("value"),
+                                "meta": routing.get("meta") or {},
+                            },
+                        )
                 if args.xml_nodes and not struct_error and not xml_nodes_disabled:
                     nodes_this_doc = 0
                     for node in iter_ableton_xml_nodes(text):
@@ -1114,31 +1176,54 @@ def main(argv: list[str]) -> int:
                 parsed_docs += 1
 
                 # Emit reference edges
-                for ref in summary.get("sample_refs", []):
-                    ref_path = Path(ref)
-                    exists = False
-                    try:
-                        if ref_path.is_absolute():
-                            exists = ref_path.exists()
-                        else:
-                            exists = (root / ref_path).exists()
-                    except Exception:
+                if write_refs:
+                    for ref in summary.get("sample_refs", []):
+                        ref_path = Path(ref)
                         exists = False
+                        try:
+                            if ref_path.is_absolute():
+                                exists = ref_path.exists()
+                            else:
+                                exists = (root / ref_path).exists()
+                        except Exception:
+                            exists = False
 
-                    refs_total += 1
-                    if not exists:
-                        refs_missing += 1
+                        refs_total += 1
+                        if not exists:
+                            refs_missing += 1
 
-                    write_jsonl(
-                        refs_path,
-                        {
-                            "src": rel,
-                            "src_kind": ext.lstrip("."),
-                            "ref_kind": "sample",
-                            "ref_path": ref,
-                            "exists": bool(exists),
-                            "scanned_at": started,
-                        },
+                        write_jsonl(
+                            refs_path,
+                            {
+                                "src": rel,
+                                "src_kind": ext.lstrip("."),
+                                "ref_kind": "sample",
+                                "ref_path": ref,
+                                "exists": bool(exists),
+                                "scanned_at": started,
+                            },
+                        )
+                if write_per_doc:
+                    ensure_dir(per_doc_dir)
+                    per_doc_payload = {
+                        "path": rel,
+                        "path_hash": rec["path_hash"],
+                        "ext": ext,
+                        "scope": scope,
+                        "scanned_at": started,
+                        "summary": summary,
+                        "tracks": struct_payload.get("tracks", []) if write_struct else [],
+                        "clips": struct_payload.get("clips", []) if write_struct else [],
+                        "devices": struct_payload.get("devices", []) if write_struct else [],
+                        "routings": struct_payload.get("routings", []) if write_struct else [],
+                        "clip_details": struct_payload.get("clip_details", []) if write_clips else [],
+                        "device_params": struct_payload.get("device_params", []) if write_devices else [],
+                        "refs": summary.get("sample_refs", []) if write_refs else [],
+                    }
+                    per_doc_path = per_doc_dir / f"{rec['path_hash']}.json"
+                    per_doc_path.write_text(
+                        json.dumps(per_doc_payload, ensure_ascii=False),
+                        encoding="utf-8",
                     )
 
             except Exception as e:
@@ -1152,21 +1237,24 @@ def main(argv: list[str]) -> int:
                         "error": str(e),
                     },
                 )
-                write_jsonl(
-                    struct_path,
-                    {
-                        "path": rel,
-                        "ext": ext,
-                        "kind": "ableton_doc" if ext in ABLETON_DOC_EXTS else "ableton_artifact",
-                        "scanned_at": started,
-                        "parse_method": "xml_error",
-                        "error": str(e),
-                        "tracks": [],
-                        "clips": [],
-                        "devices": [],
-                        "routings": [],
-                    },
-                )
+                if write_struct:
+                    write_jsonl(
+                        struct_path,
+                        {
+                            "path": rel,
+                            "ext": ext,
+                            "kind": "ableton_doc"
+                            if ext in ABLETON_DOC_EXTS
+                            else "ableton_artifact",
+                            "scanned_at": started,
+                            "parse_method": "xml_error",
+                            "error": str(e),
+                            "tracks": [],
+                            "clips": [],
+                            "devices": [],
+                            "routings": [],
+                        },
+                    )
 
         if args.verbose and indexed % 250 == 0:
             print(
@@ -1214,6 +1302,7 @@ def main(argv: list[str]) -> int:
             refs_missing=refs_missing,
             top_dirs=top_dirs,
             scope=scope,
+            mode=args.mode,
             all_files=all_files,
             skipped_dirs=skipped_dirs[0],
         )

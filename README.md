@@ -48,6 +48,9 @@ Outputs (per scope):
 - `refs_graph_<scope>.jsonl`
 - `scan_state_<scope>.json`
 
+Targeted scans also write per-set JSON caches:
+- `sets/<scope>/<path_hash>.json`
+
 A consolidated SQLite DB is written to:
 ```
 .abletools_catalog/abletools_catalog.sqlite
@@ -63,11 +66,14 @@ A consolidated SQLite DB is written to:
 
 ## Core Commands
 ```bash
-# Scan all files (all scopes) with hashing
-python abletools_scan.py /path/to/Root --scope live_recordings --hash --rehash-all
+# Full scan (summary + hashes only)
+python abletools_scan.py /path/to/Root --scope live_recordings --mode full --hash --rehash-all
+
+# Targeted scan (single set, detailed tags + per-set JSON)
+python abletools_scan.py /path/to/Set.als --scope live_recordings --mode targeted --details all
 
 # One-time deep XML snapshot (full coverage, no incremental)
-python abletools_scan.py /path/to/Root --scope live_recordings --deep-xml-snapshot --xml-nodes
+python abletools_scan.py /path/to/Set.als --scope live_recordings --mode targeted --deep-xml-snapshot --xml-nodes
 
 # XML nodes safety caps (optional)
 python abletools_scan.py /path/to/Root --scope live_recordings --xml-nodes --xml-nodes-max-mb 512 --xml-nodes-per-doc 20000

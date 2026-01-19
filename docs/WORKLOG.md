@@ -3,12 +3,12 @@
 ## Worklog
 - 2026-01-19: Added comprehensive XML node capture (opt-in), schema validation, and scan performance safeguards (hash-docs-only, changed-only, checkpoints).
 - 2026-01-19: Added structured XML extraction and normalized tables (tracks/clips/devices/routing) plus schema docs.
+- 2026-01-19: Split scan modes (full vs targeted) and added per-set JSON cache for targeted scans.
 
 ## Backlog (Prioritized)
-### P0: Targeted XML Extraction (No automation/arrangement)
-- Device parameters (minimal): extract param id/name/value and device association.
-- Routing details (minimal): input/output targets + sends/returns flags.
-- Clip details (minimal): warp mode, loop on/off, loop range, transpose/pitch.
+### P0: Targeted Scan UX
+- Persist targeted scan detail group defaults.
+- Add targeted scan run history (per-set cache age + last refresh).
 
 ### P1: Schema + DB Enrichment
 - JSONL schemas for new outputs.
@@ -26,6 +26,5 @@
 - Backup tab (snapshot .als + db + JSON + schemas).
 
 ## Current Plan
-1) Implement P0 targeted extraction (device params, routing details, clip details).
-2) Add JSONL schemas + DB tables + migration for new outputs.
-3) Update validator and docs; run tests.
+1) Polish targeted scan UX and visibility (history + defaults).
+2) Add per-set cache inspection in UI details pane.

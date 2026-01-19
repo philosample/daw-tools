@@ -693,9 +693,72 @@ class CatalogPanel(tk.Frame):
             messagebox.showinfo("Scan Selected", "No path available for selection.")
             return
         target = Path(path)
-        if target.is_file():
-            target = target.parent
-        self.app.run_targeted_scan(scope, target)
+        details = self._prompt_targeted_details()
+        if details is None:
+            return
+        self.app.run_targeted_scan(scope, target, details)
+
+    def _prompt_targeted_details(self) -> Optional[list[str]]:
+        dialog = tk.Toplevel(self)
+        dialog.title("Targeted Scan Options")
+        dialog.configure(bg=BG)
+        dialog.resizable(False, False)
+        dialog.transient(self)
+
+        container = tk.Frame(dialog, bg=BG)
+        container.pack(padx=16, pady=16)
+
+        tk.Label(
+            container,
+            text="Include detail groups:",
+            font=H2_FONT,
+            fg=TEXT,
+            bg=BG,
+        ).pack(anchor="w", pady=(0, 8))
+
+        options = ["struct", "clips", "devices", "routing", "refs"]
+        vars_map: dict[str, tk.BooleanVar] = {}
+        for opt in options:
+            var = tk.BooleanVar(value=opt in self.app.targeted_detail_groups)
+            vars_map[opt] = var
+            tk.Checkbutton(
+                container,
+                text=opt.replace("_", " ").title(),
+                variable=var,
+                bg=BG,
+                fg=TEXT,
+                activebackground=BG,
+                activeforeground=TEXT,
+                selectcolor=BG_NAV,
+            ).pack(anchor="w")
+
+        result: dict[str, Optional[list[str]]] = {"details": None}
+
+        def _apply() -> None:
+            picked = [opt for opt, var in vars_map.items() if var.get()]
+            if not picked:
+                messagebox.showinfo("Targeted Scan", "Select at least one detail group.")
+                return
+            result["details"] = picked
+            dialog.destroy()
+
+        def _cancel() -> None:
+            dialog.destroy()
+
+        btns = tk.Frame(container, bg=BG)
+        btns.pack(fill="x", pady=(12, 0))
+        ttk.Button(btns, text="Run", command=_apply, style="Accent.TButton").pack(side="left")
+        ttk.Button(btns, text="Cancel", command=_cancel, style="Ghost.TButton").pack(
+            side="left", padx=(8, 0)
+        )
+
+        dialog.grab_set()
+        self.wait_window(dialog)
+
+        details = result["details"]
+        if details:
+            self.app.targeted_detail_groups = set(details)
+        return details
 
     def _audit_tracks(self) -> None:
         issues = self.app.audit_zero_tracks()
@@ -1670,6 +1733,7 @@ class ScanPanel(ttk.LabelFrame):
             cmd = [sys.executable, str(scan_script), str(root)]
             cmd.extend(["--scope", scope])
             cmd.extend(["--out", str(self.app.catalog_dir())])
+            cmd.extend(["--mode", "full"])
             if self.incremental_var.get():
                 cmd.append("--incremental")
             if self.include_media_var.get():
@@ -1694,7 +1758,7 @@ class ScanPanel(ttk.LabelFrame):
             if self.resume_var.get():
                 cmd.append("--resume")
             if self.deep_snapshot_var.get():
-                cmd.append("--deep-xml-snapshot")
+                self._enqueue("NOTE: Deep XML snapshot is only available for targeted scans.")
             cmd.append("--verbose")
             cmds.append(cmd)
 
@@ -2377,6 +2441,7 @@ class AbletoolsUI(tk.Tk):
         self.log_path: Optional[Path] = None
         self.logger = self._setup_logging()
         self._db_refresh_lock = threading.Lock()
+        self.targeted_detail_groups = {"struct", "clips", "devices", "routing", "refs"}
 
         self._nav_buttons: dict[str, tk.Button] = {}
         self._views: dict[str, tk.Frame] = {}
@@ -2917,7 +2982,7 @@ class AbletoolsUI(tk.Tk):
 
         threading.Thread(target=_run, daemon=True).start()
 
-    def run_targeted_scan(self, scope: str, root: Path) -> None:
+    def run_targeted_scan(self, scope: str, root: Path, details: list[str]) -> None:
         scan_script = self.scan_script_path()
         if not scan_script.exists():
             messagebox.showerror("Scan Selected", f"Missing scanner script:\n{scan_script}")
@@ -2928,10 +2993,15 @@ class AbletoolsUI(tk.Tk):
             str(root),
             "--scope",
             scope,
+            "--mode",
+            "targeted",
+            "--details",
+            ",".join(details),
             "--out",
             str(self.catalog_dir()),
             "--incremental",
             "--only-known",
+            "--progress",
             "--verbose",
         ]
         self._log_event("SCAN", f"targeted: {cmd}")

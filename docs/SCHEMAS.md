@@ -40,6 +40,9 @@ The extractor is schema-agnostic and parses gzipped XML. It uses tag/attribute h
 The parsed output is stored in `ableton_docs.jsonl` under `summary`.
 For full coverage, `ableton_xml_nodes.jsonl` captures every XML node with attributes and text.
 
+Targeted scans can also emit per-set JSON caches under `sets/<scope>/<path_hash>.json`.
+These are not ingested into SQLite and are intended for fast per-set reads.
+
 ## JSONL Schemas
 
 Schema files live in `schemas/`:
