@@ -38,6 +38,7 @@ The extractor is schema-agnostic and parses gzipped XML. It uses tag/attribute h
 - Tempo: `Tempo Value="..."`
 
 The parsed output is stored in `ableton_docs.jsonl` under `summary`.
+For full coverage, `ableton_xml_nodes.jsonl` captures every XML node with attributes and text.
 
 ## JSONL Schemas
 

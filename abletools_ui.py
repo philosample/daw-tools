@@ -1554,6 +1554,22 @@ class ScanPanel(ttk.LabelFrame):
                 self._enqueue(proc.stderr.strip() or "DB update failed.")
                 return
 
+            validator = self.app.abletools_dir / "abletools_schema_validate.py"
+            if validator.exists():
+                try:
+                    proc = subprocess.run(
+                        [sys.executable, str(validator), str(catalog_dir)],
+                        cwd=str(self.app.abletools_dir),
+                        capture_output=True,
+                        text=True,
+                    )
+                    if proc.stdout:
+                        self._enqueue(proc.stdout.strip())
+                    if proc.returncode != 0:
+                        self._enqueue(proc.stderr.strip() or "Schema validation failed.")
+                except Exception as exc:
+                    self._enqueue(f"Schema validation failed: {exc}")
+
             analytics = self.app.abletools_dir / "abletools_analytics.py"
             db_path = self.app.resolve_catalog_db_path()
             if analytics.exists() and db_path:

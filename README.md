@@ -7,6 +7,7 @@ Abletools is a local toolkit for indexing, searching, and analyzing Ableton Live
 - Incremental scanning with optional rehashing.
 - JSONL catalogs plus a consolidated SQLite database.
 - Structured XML extraction for Ableton docs and artifacts.
+- Full XML node capture (attributes + text) for comprehensive mapping.
 - Preferences auto-detection and JSON conversion.
 - UI for scanning, catalog browsing, and tools like RAMify.
 
