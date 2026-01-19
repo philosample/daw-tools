@@ -41,6 +41,9 @@ Outputs (per scope):
 - `file_index_<scope>.jsonl`
 - `ableton_docs_<scope>.jsonl`
 - `ableton_struct_<scope>.jsonl`
+- `ableton_clip_details_<scope>.jsonl`
+- `ableton_device_params_<scope>.jsonl`
+- `ableton_routing_details_<scope>.jsonl`
 - `ableton_xml_nodes_<scope>.jsonl`
 - `refs_graph_<scope>.jsonl`
 - `scan_state_<scope>.json`
@@ -65,6 +68,9 @@ python abletools_scan.py /path/to/Root --scope live_recordings --hash --rehash-a
 
 # One-time deep XML snapshot (full coverage, no incremental)
 python abletools_scan.py /path/to/Root --scope live_recordings --deep-xml-snapshot --xml-nodes
+
+# XML nodes safety caps (optional)
+python abletools_scan.py /path/to/Root --scope live_recordings --xml-nodes --xml-nodes-max-mb 512 --xml-nodes-per-doc 20000
 
 # Changed-only scan with checkpoints
 python abletools_scan.py /path/to/Root --scope live_recordings --changed-only --checkpoint

@@ -1167,6 +1167,7 @@ class ScanPanel(ttk.LabelFrame):
         self.checkpoint_var = tk.BooleanVar(value=True)
         self.resume_var = tk.BooleanVar(value=False)
         self.deep_snapshot_var = tk.BooleanVar(value=False)
+        self.xml_nodes_var = tk.BooleanVar(value=False)
         self.log_visible = tk.BooleanVar(value=True)
 
         self._proc: subprocess.Popen | None = None
@@ -1260,6 +1261,11 @@ class ScanPanel(ttk.LabelFrame):
             text="Resume checkpoint",
             variable=self.resume_var,
         ).grid(row=1, column=4, sticky="w", padx=(0, 14), pady=(6, 0))
+        ttk.Checkbutton(
+            opts,
+            text="XML nodes (huge)",
+            variable=self.xml_nodes_var,
+        ).grid(row=1, column=5, sticky="w", padx=(0, 14), pady=(6, 0))
 
         btns = ttk.Frame(self)
         btns.grid(row=2, column=0, columnspan=3, sticky="we", pady=(10, 0))
@@ -1679,7 +1685,8 @@ class ScanPanel(ttk.LabelFrame):
             if not self.all_files_var.get():
                 cmd.append("--only-known")
             cmd.append("--progress")
-            cmd.append("--xml-nodes")
+            if self.xml_nodes_var.get():
+                cmd.append("--xml-nodes")
             if self.changed_only_var.get():
                 cmd.append("--changed-only")
             if self.checkpoint_var.get():

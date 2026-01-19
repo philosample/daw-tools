@@ -61,6 +61,8 @@ def test_parse_ableton_xml_structured() -> None:
     assert summary["tracks"][0]["name"] == "Track 1"
     assert summary["clips"]
     assert summary["devices"]
+    assert summary["device_params"] == []
+    assert isinstance(summary["clip_details"], list)
 
 
 def test_iter_ableton_xml_nodes() -> None:

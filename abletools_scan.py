@@ -131,6 +131,19 @@ ROUTING_META_KEYS = {
     "InputChannel",
     "OutputChannel",
 }
+CLIP_DETAIL_KEYS = {
+    "WarpMode",
+    "IsWarped",
+    "LoopOn",
+    "LoopStart",
+    "LoopEnd",
+    "Start",
+    "End",
+    "PitchCoarse",
+    "PitchFine",
+    "Transpose",
+}
+DEVICE_PARAM_KEYS = {"Name", "DisplayName", "ShortName", "Id", "Value", "Manual", "Min", "Max"}
 
 
 def _now_iso_local() -> str:
@@ -495,6 +508,8 @@ def parse_ableton_xml(text: str) -> dict:
     clips: list[dict] = []
     devices: list[dict] = []
     routings: list[dict] = []
+    clip_details: list[dict] = []
+    device_params: list[dict] = []
     root = ET.fromstring(text)
     track_idx = 0
     clip_idx = 0
@@ -522,6 +537,7 @@ def parse_ableton_xml(text: str) -> dict:
                     clip_type = child_local.replace("Clip", "").lower()
                     length = _extract_numeric_attr(child, ("Length", "LoopEnd", "End"))
                     clip_meta = _collect_meta(child, CLIP_META_KEYS)
+                    detail_meta = _collect_meta(child, CLIP_DETAIL_KEYS)
                     clips.append(
                         {
                             "index": clip_idx,
@@ -532,6 +548,16 @@ def parse_ableton_xml(text: str) -> dict:
                             "meta": clip_meta,
                         }
                     )
+                    if detail_meta:
+                        clip_details.append(
+                            {
+                                "index": clip_idx,
+                                "track_index": track_idx,
+                                "type": clip_type,
+                                "name": clip_name,
+                                "details": detail_meta,
+                            }
+                        )
                     clip_idx += 1
                 if child_local.endswith("Device") and child_local not in TRACK_TAGS:
                     device_name = _extract_name(child)
@@ -545,6 +571,22 @@ def parse_ableton_xml(text: str) -> dict:
                             "meta": device_meta,
                         }
                     )
+                    for param in child.iter():
+                        param_local = _local_tag(param.tag)
+                        if not param_local.endswith("Parameter"):
+                            continue
+                        param_meta = _collect_meta(param, DEVICE_PARAM_KEYS)
+                        if not param_meta:
+                            continue
+                        device_params.append(
+                            {
+                                "device_index": device_idx,
+                                "track_index": track_idx,
+                                "type": param_local,
+                                "name": param_meta.get("Name") or param_meta.get("DisplayName") or "",
+                                "param": param_meta,
+                            }
+                        )
                     device_idx += 1
                 if child_local in {"InputRouting", "OutputRouting"}:
                     value = child.attrib.get("Value") or child.text or ""
@@ -563,6 +605,8 @@ def parse_ableton_xml(text: str) -> dict:
         "clips": clips,
         "devices": devices,
         "routings": routings,
+        "clip_details": clip_details,
+        "device_params": device_params,
     }
 
 
@@ -654,6 +698,24 @@ def main(argv: list[str]) -> int:
         help="Emit full XML node records for Ableton docs/artifacts.",
     )
     ap.add_argument(
+        "--xml-nodes-max",
+        type=int,
+        default=200000,
+        help="Max XML nodes to emit (0 = unlimited).",
+    )
+    ap.add_argument(
+        "--xml-nodes-max-mb",
+        type=int,
+        default=512,
+        help="Max XML node output size in MB (0 = unlimited).",
+    )
+    ap.add_argument(
+        "--xml-nodes-per-doc",
+        type=int,
+        default=20000,
+        help="Max XML nodes per document (0 = unlimited).",
+    )
+    ap.add_argument(
         "--hash-docs-only",
         action="store_true",
         help="Compute hashes only for Ableton docs/artifacts.",
@@ -730,6 +792,9 @@ def main(argv: list[str]) -> int:
     file_index_path = out_dir / f"file_index{suffix}.jsonl"
     docs_path = out_dir / f"ableton_docs{suffix}.jsonl"
     struct_path = out_dir / f"ableton_struct{suffix}.jsonl"
+    clip_details_path = out_dir / f"ableton_clip_details{suffix}.jsonl"
+    device_params_path = out_dir / f"ableton_device_params{suffix}.jsonl"
+    routing_details_path = out_dir / f"ableton_routing_details{suffix}.jsonl"
     xml_nodes_path = out_dir / f"ableton_xml_nodes{suffix}.jsonl"
     refs_path = out_dir / f"refs_graph{suffix}.jsonl"
     state_path = out_dir / f"scan_state{suffix}.json"
@@ -757,6 +822,12 @@ def main(argv: list[str]) -> int:
     ableton_artifacts = 0
     refs_total = 0
     refs_missing = 0
+    xml_nodes_written = 0
+    xml_nodes_bytes = 0
+    xml_nodes_disabled = False
+    xml_nodes_max = max(0, int(args.xml_nodes_max))
+    xml_nodes_max_bytes = max(0, int(args.xml_nodes_max_mb)) * 1024 * 1024
+    xml_nodes_per_doc = max(0, int(args.xml_nodes_per_doc))
 
     checkpoint_path = out_dir / f"scan_checkpoint{suffix}.json"
     resume_remaining = 0
@@ -948,27 +1019,98 @@ def main(argv: list[str]) -> int:
                         "routings": struct_payload.get("routings", []),
                     },
                 )
-                if args.xml_nodes and not struct_error:
+                for detail in struct_payload.get("clip_details", []) or []:
+                    write_jsonl(
+                        clip_details_path,
+                        {
+                            "path": rel,
+                            "ext": ext,
+                            "kind": "ableton_doc"
+                            if ext in ABLETON_DOC_EXTS
+                            else "ableton_artifact",
+                            "scanned_at": started,
+                            "clip_index": detail.get("index"),
+                            "track_index": detail.get("track_index"),
+                            "clip_type": detail.get("type"),
+                            "name": detail.get("name"),
+                            "details": detail.get("details") or {},
+                        },
+                    )
+                for param in struct_payload.get("device_params", []) or []:
+                    write_jsonl(
+                        device_params_path,
+                        {
+                            "path": rel,
+                            "ext": ext,
+                            "kind": "ableton_doc"
+                            if ext in ABLETON_DOC_EXTS
+                            else "ableton_artifact",
+                            "scanned_at": started,
+                            "device_index": param.get("device_index"),
+                            "track_index": param.get("track_index"),
+                            "param_type": param.get("type"),
+                            "name": param.get("name"),
+                            "param": param.get("param") or {},
+                        },
+                    )
+                for routing in struct_payload.get("routings", []) or []:
+                    write_jsonl(
+                        routing_details_path,
+                        {
+                            "path": rel,
+                            "ext": ext,
+                            "kind": "ableton_doc"
+                            if ext in ABLETON_DOC_EXTS
+                            else "ableton_artifact",
+                            "scanned_at": started,
+                            "track_index": routing.get("track_index"),
+                            "direction": routing.get("direction"),
+                            "value": routing.get("value"),
+                            "meta": routing.get("meta") or {},
+                        },
+                    )
+                if args.xml_nodes and not struct_error and not xml_nodes_disabled:
+                    nodes_this_doc = 0
                     for node in iter_ableton_xml_nodes(text):
-                        write_jsonl(
-                            xml_nodes_path,
-                            {
-                                "path": rel,
-                                "ext": ext,
-                                "kind": "ableton_doc"
-                                if ext in ABLETON_DOC_EXTS
-                                else "ableton_artifact",
-                                "scanned_at": started,
-                                "ord": node["ord"],
-                                "depth": node["depth"],
-                                "tag": node["tag"],
-                                "path_tag": node["path"],
-                                "attrs": node["attrs"],
-                                "text": node["text"],
-                                "text_len": node["text_len"],
-                                "text_truncated": node["text_truncated"],
-                            },
-                        )
+                        if xml_nodes_per_doc and nodes_this_doc >= xml_nodes_per_doc:
+                            print(
+                                f"[xml_nodes] doc cap reached ({xml_nodes_per_doc}) for {rel}",
+                                file=sys.stderr,
+                            )
+                            break
+                        if xml_nodes_max and xml_nodes_written >= xml_nodes_max:
+                            xml_nodes_disabled = True
+                            print("[xml_nodes] global node cap reached; disabling.", file=sys.stderr)
+                            break
+                        record = {
+                            "path": rel,
+                            "ext": ext,
+                            "kind": "ableton_doc"
+                            if ext in ABLETON_DOC_EXTS
+                            else "ableton_artifact",
+                            "scanned_at": started,
+                            "ord": node["ord"],
+                            "depth": node["depth"],
+                            "tag": node["tag"],
+                            "path_tag": node["path"],
+                            "attrs": node["attrs"],
+                            "text": node["text"],
+                            "text_len": node["text_len"],
+                            "text_truncated": node["text_truncated"],
+                        }
+                        payload = json.dumps(record, ensure_ascii=False)
+                        payload_bytes = len(payload.encode("utf-8")) + 1
+                        if xml_nodes_max_bytes and xml_nodes_bytes + payload_bytes > xml_nodes_max_bytes:
+                            xml_nodes_disabled = True
+                            print(
+                                "[xml_nodes] max output size reached; disabling.",
+                                file=sys.stderr,
+                            )
+                            break
+                        write_jsonl(xml_nodes_path, record)
+                        xml_nodes_written += 1
+                        xml_nodes_bytes += payload_bytes
+                        nodes_this_doc += 1
                 parsed_docs += 1
 
                 # Emit reference edges

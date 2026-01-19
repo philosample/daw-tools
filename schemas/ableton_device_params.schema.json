@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "abletools ableton_device_params.jsonl record",
+  "type": "object",
+  "required": ["path", "ext", "kind", "scanned_at", "device_index"],
+  "properties": {
+    "path": {"type": "string"},
+    "ext": {"type": "string"},
+    "kind": {"type": "string"},
+    "scanned_at": {"type": "integer"},
+    "device_index": {"type": "integer"},
+    "track_index": {"type": "integer"},
+    "param_type": {"type": "string"},
+    "name": {"type": "string"},
+    "param": {"type": "object"}
+  },
+  "additionalProperties": true
+}

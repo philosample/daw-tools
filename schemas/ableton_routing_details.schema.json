@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "abletools ableton_routing_details.jsonl record",
+  "type": "object",
+  "required": ["path", "ext", "kind", "scanned_at", "track_index"],
+  "properties": {
+    "path": {"type": "string"},
+    "ext": {"type": "string"},
+    "kind": {"type": "string"},
+    "scanned_at": {"type": "integer"},
+    "track_index": {"type": "integer"},
+    "direction": {"type": "string"},
+    "value": {"type": "string"},
+    "meta": {"type": "object"}
+  },
+  "additionalProperties": true
+}

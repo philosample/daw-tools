@@ -180,6 +180,34 @@ def create_schema(conn: sqlite3.Connection) -> None:
                 meta_json TEXT
             );
 
+            CREATE TABLE IF NOT EXISTS ableton_clip_details{suffix} (
+                doc_path TEXT NOT NULL,
+                clip_index INTEGER NOT NULL,
+                track_index INTEGER,
+                clip_type TEXT,
+                name TEXT,
+                details_json TEXT,
+                PRIMARY KEY (doc_path, clip_index)
+            );
+
+            CREATE TABLE IF NOT EXISTS ableton_device_params{suffix} (
+                doc_path TEXT NOT NULL,
+                device_index INTEGER NOT NULL,
+                track_index INTEGER,
+                param_type TEXT,
+                name TEXT,
+                param_json TEXT,
+                PRIMARY KEY (doc_path, device_index, name)
+            );
+
+            CREATE TABLE IF NOT EXISTS ableton_routing_details{suffix} (
+                doc_path TEXT NOT NULL,
+                track_index INTEGER,
+                direction TEXT,
+                value TEXT,
+                meta_json TEXT
+            );
+
             CREATE TABLE IF NOT EXISTS ableton_xml_nodes{suffix} (
                 doc_path TEXT NOT NULL,
                 ord INTEGER NOT NULL,
@@ -251,6 +279,9 @@ def create_schema(conn: sqlite3.Connection) -> None:
             CREATE INDEX IF NOT EXISTS idx_ableton_clips_doc{suffix} ON ableton_clips{suffix}(doc_path);
             CREATE INDEX IF NOT EXISTS idx_ableton_devices_doc{suffix} ON ableton_devices{suffix}(doc_path);
             CREATE INDEX IF NOT EXISTS idx_ableton_routing_doc{suffix} ON ableton_routing{suffix}(doc_path);
+            CREATE INDEX IF NOT EXISTS idx_ableton_clip_details_doc{suffix} ON ableton_clip_details{suffix}(doc_path);
+            CREATE INDEX IF NOT EXISTS idx_ableton_device_params_doc{suffix} ON ableton_device_params{suffix}(doc_path);
+            CREATE INDEX IF NOT EXISTS idx_ableton_routing_details_doc{suffix} ON ableton_routing_details{suffix}(doc_path);
             CREATE INDEX IF NOT EXISTS idx_ableton_xml_nodes_doc{suffix} ON ableton_xml_nodes{suffix}(doc_path);
             CREATE INDEX IF NOT EXISTS idx_ableton_xml_nodes_tag{suffix} ON ableton_xml_nodes{suffix}(tag);
             """
@@ -808,6 +839,146 @@ def load_ableton_xml_nodes(
     set_ingest_offset(conn, source, end_offset)
 
 
+def load_ableton_clip_details(
+    conn: sqlite3.Connection, path: Path, incremental: bool, scope: str
+) -> None:
+    if not path.exists():
+        return
+    suffix = scope_suffix(scope)
+    source = f"ableton_clip_details{suffix}"
+    start_offset = get_ingest_offset(conn, source) if incremental else 0
+    rows: list[tuple] = []
+
+    def flush() -> None:
+        if not rows:
+            return
+        insert_many(
+            conn,
+            f"""
+            INSERT OR REPLACE INTO ableton_clip_details{suffix}
+                (doc_path, clip_index, track_index, clip_type, name, details_json)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            rows,
+        )
+        rows.clear()
+
+    def on_record(rec: dict) -> None:
+        rows.append(
+            (
+                rec.get("path"),
+                rec.get("clip_index"),
+                rec.get("track_index"),
+                rec.get("clip_type"),
+                rec.get("name"),
+                json.dumps(rec.get("details") or {}),
+            )
+        )
+        if len(rows) >= 1000:
+            flush()
+
+    end_offset = (
+        read_jsonl_incremental(path, start_offset, on_record)
+        if incremental
+        else read_jsonl_incremental(path, 0, on_record)
+    )
+    flush()
+    set_ingest_offset(conn, source, end_offset)
+
+
+def load_ableton_device_params(
+    conn: sqlite3.Connection, path: Path, incremental: bool, scope: str
+) -> None:
+    if not path.exists():
+        return
+    suffix = scope_suffix(scope)
+    source = f"ableton_device_params{suffix}"
+    start_offset = get_ingest_offset(conn, source) if incremental else 0
+    rows: list[tuple] = []
+
+    def flush() -> None:
+        if not rows:
+            return
+        insert_many(
+            conn,
+            f"""
+            INSERT OR REPLACE INTO ableton_device_params{suffix}
+                (doc_path, device_index, track_index, param_type, name, param_json)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            rows,
+        )
+        rows.clear()
+
+    def on_record(rec: dict) -> None:
+        rows.append(
+            (
+                rec.get("path"),
+                rec.get("device_index"),
+                rec.get("track_index"),
+                rec.get("param_type"),
+                rec.get("name"),
+                json.dumps(rec.get("param") or {}),
+            )
+        )
+        if len(rows) >= 1000:
+            flush()
+
+    end_offset = (
+        read_jsonl_incremental(path, start_offset, on_record)
+        if incremental
+        else read_jsonl_incremental(path, 0, on_record)
+    )
+    flush()
+    set_ingest_offset(conn, source, end_offset)
+
+
+def load_ableton_routing_details(
+    conn: sqlite3.Connection, path: Path, incremental: bool, scope: str
+) -> None:
+    if not path.exists():
+        return
+    suffix = scope_suffix(scope)
+    source = f"ableton_routing_details{suffix}"
+    start_offset = get_ingest_offset(conn, source) if incremental else 0
+    rows: list[tuple] = []
+
+    def flush() -> None:
+        if not rows:
+            return
+        insert_many(
+            conn,
+            f"""
+            INSERT OR REPLACE INTO ableton_routing_details{suffix}
+                (doc_path, track_index, direction, value, meta_json)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            rows,
+        )
+        rows.clear()
+
+    def on_record(rec: dict) -> None:
+        rows.append(
+            (
+                rec.get("path"),
+                rec.get("track_index"),
+                rec.get("direction"),
+                rec.get("value"),
+                json.dumps(rec.get("meta") or {}),
+            )
+        )
+        if len(rows) >= 1000:
+            flush()
+
+    end_offset = (
+        read_jsonl_incremental(path, start_offset, on_record)
+        if incremental
+        else read_jsonl_incremental(path, 0, on_record)
+    )
+    flush()
+    set_ingest_offset(conn, source, end_offset)
+
+
 def load_refs_graph(
     conn: sqlite3.Connection, path: Path, incremental: bool, table: str
 ) -> None:
@@ -1008,6 +1179,9 @@ def migrate_catalog(catalog: CatalogPaths, db_path: Path, incremental: bool) -> 
             docs_path = catalog.root / f"ableton_docs{suffix}.jsonl"
             struct_path = catalog.root / f"ableton_struct{suffix}.jsonl"
             xml_nodes_path = catalog.root / f"ableton_xml_nodes{suffix}.jsonl"
+            clip_details_path = catalog.root / f"ableton_clip_details{suffix}.jsonl"
+            device_params_path = catalog.root / f"ableton_device_params{suffix}.jsonl"
+            routing_details_path = catalog.root / f"ableton_routing_details{suffix}.jsonl"
             refs_path = catalog.root / f"refs_graph{suffix}.jsonl"
             scan_state_path = catalog.root / f"scan_state{suffix}.json"
 
@@ -1016,6 +1190,9 @@ def migrate_catalog(catalog: CatalogPaths, db_path: Path, incremental: bool) -> 
                 load_file_index(conn, file_index_path, incremental, file_index_table)
                 load_ableton_docs(conn, docs_path, incremental, docs_table)
                 load_ableton_struct(conn, struct_path, incremental, scope)
+                load_ableton_clip_details(conn, clip_details_path, incremental, scope)
+                load_ableton_device_params(conn, device_params_path, incremental, scope)
+                load_ableton_routing_details(conn, routing_details_path, incremental, scope)
                 load_ableton_xml_nodes(conn, xml_nodes_path, incremental, scope)
                 load_refs_graph(conn, refs_path, incremental, refs_table)
                 load_scan_state(conn, scan_state_path, scan_state_table)
