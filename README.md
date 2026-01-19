@@ -10,6 +10,8 @@ Abletools is a local toolkit for indexing, searching, and analyzing Ableton Live
 - Full XML node capture (attributes + text) for comprehensive mapping.
 - Preferences auto-detection and JSON conversion.
 - UI for scanning, catalog browsing, and tools like RAMify.
+- Backup handling: skip `Backup/` folders and timestamped backups by default, optionally include.
+- Targeted testing harness + coverage map for smarter CI runs.
 
 ## Requirements
 - Python 3.10+ (tested with a local venv)
@@ -87,6 +89,9 @@ python abletools_scan.py /path/to/Root --scope live_recordings --resume --checkp
 # Incremental DB update
 python abletools_catalog_db.py ./.abletools_catalog --append
 
+# Include backups (Backup/ folders + [timestamp] filenames)
+python abletools_scan.py /path/to/Root --scope live_recordings --mode full --include-backups
+
 # Preferences-only refresh
 python abletools_catalog_db.py ./.abletools_catalog --prefs-only
 
@@ -101,6 +106,12 @@ python abletools_schema_validate.py ./.abletools_catalog
 
 # Incremental schema validation (new JSONL only)
 python abletools_schema_validate.py ./.abletools_catalog --incremental
+
+# Targeted tests (detect changes and run matching tests)
+./scripts/ci_run_targeted.sh
+
+# Full test harness (pytest + scan scripts)
+./scripts/test_all.sh
 ```
 
 ## Project Layout
@@ -111,10 +122,12 @@ abletools_catalog_db.py    # SQLite schema + migration
 abletools_prefs.py         # Preferences discovery + parsing
 ramify_core.py             # Shared RAMify logic
 resources/                 # Images, icons, and media assets
+scripts/                   # Test harness + CI helpers
 ```
 
 ## Docs
 - `docs/TEST_PLAN.md`
+- `docs/TEST_CATALOG.md`
 - `docs/OPTIMIZATION.md`
 - `docs/DATA_GAPS.md`
 - `docs/PRODUCT_TASKS.md`
