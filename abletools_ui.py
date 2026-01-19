@@ -1631,6 +1631,8 @@ class ScanPanel(ttk.LabelFrame):
                 "Targeted Scan",
                 "No sets found yet. Run a full scan first.",
             )
+            dialog.destroy()
+            return
         rows: list[tuple[str, dict[str, str]]] = []
         for item in sets:
             rows.append(
