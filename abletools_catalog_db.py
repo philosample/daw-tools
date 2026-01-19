@@ -134,6 +134,52 @@ def create_schema(conn: sqlite3.Connection) -> None:
                 tempo REAL
             );
 
+            CREATE TABLE IF NOT EXISTS ableton_struct_meta{suffix} (
+                doc_path TEXT PRIMARY KEY,
+                parse_method TEXT,
+                error TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS ableton_tracks{suffix} (
+                doc_path TEXT NOT NULL,
+                track_index INTEGER NOT NULL,
+                track_type TEXT,
+                name TEXT,
+                is_group INTEGER,
+                is_folded INTEGER,
+                meta_json TEXT,
+                PRIMARY KEY (doc_path, track_index)
+            );
+
+            CREATE TABLE IF NOT EXISTS ableton_clips{suffix} (
+                doc_path TEXT NOT NULL,
+                clip_index INTEGER NOT NULL,
+                track_index INTEGER,
+                clip_type TEXT,
+                name TEXT,
+                length REAL,
+                meta_json TEXT,
+                PRIMARY KEY (doc_path, clip_index)
+            );
+
+            CREATE TABLE IF NOT EXISTS ableton_devices{suffix} (
+                doc_path TEXT NOT NULL,
+                device_index INTEGER NOT NULL,
+                track_index INTEGER,
+                device_type TEXT,
+                name TEXT,
+                meta_json TEXT,
+                PRIMARY KEY (doc_path, device_index)
+            );
+
+            CREATE TABLE IF NOT EXISTS ableton_routing{suffix} (
+                doc_path TEXT NOT NULL,
+                track_index INTEGER,
+                direction TEXT,
+                value TEXT,
+                meta_json TEXT
+            );
+
             CREATE TABLE IF NOT EXISTS doc_sample_refs{suffix} (
                 doc_path TEXT NOT NULL,
                 sample_path TEXT NOT NULL,
@@ -185,6 +231,13 @@ def create_schema(conn: sqlite3.Connection) -> None:
             CREATE INDEX IF NOT EXISTS idx_refs_graph_src{suffix} ON refs_graph{suffix}(src);
             CREATE INDEX IF NOT EXISTS idx_refs_graph_ref_path{suffix} ON refs_graph{suffix}(ref_path);
             CREATE INDEX IF NOT EXISTS idx_refs_graph_ref_kind{suffix} ON refs_graph{suffix}(ref_kind);
+            CREATE INDEX IF NOT EXISTS idx_ableton_tracks_name{suffix} ON ableton_tracks{suffix}(name);
+            CREATE INDEX IF NOT EXISTS idx_ableton_clips_name{suffix} ON ableton_clips{suffix}(name);
+            CREATE INDEX IF NOT EXISTS idx_ableton_devices_name{suffix} ON ableton_devices{suffix}(name);
+            CREATE INDEX IF NOT EXISTS idx_ableton_tracks_doc{suffix} ON ableton_tracks{suffix}(doc_path);
+            CREATE INDEX IF NOT EXISTS idx_ableton_clips_doc{suffix} ON ableton_clips{suffix}(doc_path);
+            CREATE INDEX IF NOT EXISTS idx_ableton_devices_doc{suffix} ON ableton_devices{suffix}(doc_path);
+            CREATE INDEX IF NOT EXISTS idx_ableton_routing_doc{suffix} ON ableton_routing{suffix}(doc_path);
             """
         )
 
@@ -366,6 +419,14 @@ def ensure_file_index_columns(conn: sqlite3.Connection, table: str) -> None:
 
 def ensure_ableton_docs_columns(conn: sqlite3.Connection, table: str) -> None:
     ensure_column(conn, table, "tempo", "tempo REAL")
+
+
+def ensure_ableton_struct_columns(conn: sqlite3.Connection, scope: str) -> None:
+    suffix = scope_suffix(scope)
+    ensure_column(conn, f"ableton_tracks{suffix}", "meta_json", "meta_json TEXT")
+    ensure_column(conn, f"ableton_clips{suffix}", "meta_json", "meta_json TEXT")
+    ensure_column(conn, f"ableton_devices{suffix}", "meta_json", "meta_json TEXT")
+    ensure_column(conn, f"ableton_routing{suffix}", "meta_json", "meta_json TEXT")
 
 
 def load_file_index(
@@ -556,6 +617,130 @@ def load_ableton_docs(
     )
     flush()
     set_ingest_offset(conn, table, end_offset)
+
+
+def load_ableton_struct(
+    conn: sqlite3.Connection, path: Path, incremental: bool, scope: str
+) -> None:
+    if not path.exists():
+        return
+    suffix = scope_suffix(scope)
+    source = f"ableton_struct{suffix}"
+    start_offset = get_ingest_offset(conn, source) if incremental else 0
+
+    def on_record(rec: dict) -> None:
+        doc_path = rec.get("path")
+        if not doc_path:
+            return
+        conn.execute(
+            f"INSERT OR REPLACE INTO ableton_struct_meta{suffix} (doc_path, parse_method, error) "
+            f"VALUES (?, ?, ?)",
+            (doc_path, rec.get("parse_method"), rec.get("error")),
+        )
+        conn.execute(f"DELETE FROM ableton_tracks{suffix} WHERE doc_path = ?", (doc_path,))
+        conn.execute(f"DELETE FROM ableton_clips{suffix} WHERE doc_path = ?", (doc_path,))
+        conn.execute(f"DELETE FROM ableton_devices{suffix} WHERE doc_path = ?", (doc_path,))
+        conn.execute(f"DELETE FROM ableton_routing{suffix} WHERE doc_path = ?", (doc_path,))
+
+        track_rows = []
+        for track in rec.get("tracks", []) or []:
+            track_rows.append(
+                (
+                    doc_path,
+                    track.get("index"),
+                    track.get("type"),
+                    track.get("name"),
+                    1 if track.get("is_group") else 0,
+                    1 if track.get("is_folded") else 0,
+                    json.dumps(track.get("meta") or {}),
+                )
+            )
+        if track_rows:
+            insert_many(
+                conn,
+                f"""
+                INSERT OR REPLACE INTO ableton_tracks{suffix}
+                    (doc_path, track_index, track_type, name, is_group, is_folded, meta_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                track_rows,
+            )
+
+        clip_rows = []
+        for clip in rec.get("clips", []) or []:
+            clip_rows.append(
+                (
+                    doc_path,
+                    clip.get("index"),
+                    clip.get("track_index"),
+                    clip.get("type"),
+                    clip.get("name"),
+                    clip.get("length"),
+                    json.dumps(clip.get("meta") or {}),
+                )
+            )
+        if clip_rows:
+            insert_many(
+                conn,
+                f"""
+                INSERT OR REPLACE INTO ableton_clips{suffix}
+                    (doc_path, clip_index, track_index, clip_type, name, length, meta_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                clip_rows,
+            )
+
+        device_rows = []
+        for device in rec.get("devices", []) or []:
+            device_rows.append(
+                (
+                    doc_path,
+                    device.get("index"),
+                    device.get("track_index"),
+                    device.get("type"),
+                    device.get("name"),
+                    json.dumps(device.get("meta") or {}),
+                )
+            )
+        if device_rows:
+            insert_many(
+                conn,
+                f"""
+                INSERT OR REPLACE INTO ableton_devices{suffix}
+                    (doc_path, device_index, track_index, device_type, name, meta_json)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                device_rows,
+            )
+
+        routing_rows = []
+        for routing in rec.get("routings", []) or []:
+            routing_rows.append(
+                (
+                    doc_path,
+                    routing.get("track_index"),
+                    routing.get("direction"),
+                    routing.get("value"),
+                    json.dumps(routing.get("meta") or {}),
+                )
+            )
+        if routing_rows:
+            insert_many(
+                conn,
+                f"""
+                INSERT INTO ableton_routing{suffix}
+                    (doc_path, track_index, direction, value, meta_json)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                routing_rows,
+            )
+
+    end_offset = (
+        read_jsonl_incremental(path, start_offset, on_record)
+        if incremental
+        else read_jsonl_incremental(path, 0, on_record)
+    )
+    set_ingest_offset(conn, source, end_offset)
 
 
 def load_refs_graph(
@@ -750,11 +935,13 @@ def migrate_catalog(catalog: CatalogPaths, db_path: Path, incremental: bool) -> 
 
             ensure_file_index_columns(conn, file_index_table)
             ensure_ableton_docs_columns(conn, docs_table)
+            ensure_ableton_struct_columns(conn, scope)
             ensure_column(conn, refs_table, "ref_exists", "ref_exists INTEGER")
             ensure_column(conn, scan_state_table, "ctime", "ctime INTEGER")
 
             file_index_path = catalog.root / f"file_index{suffix}.jsonl"
             docs_path = catalog.root / f"ableton_docs{suffix}.jsonl"
+            struct_path = catalog.root / f"ableton_struct{suffix}.jsonl"
             refs_path = catalog.root / f"refs_graph{suffix}.jsonl"
             scan_state_path = catalog.root / f"scan_state{suffix}.json"
 
@@ -762,6 +949,7 @@ def migrate_catalog(catalog: CatalogPaths, db_path: Path, incremental: bool) -> 
             try:
                 load_file_index(conn, file_index_path, incremental, file_index_table)
                 load_ableton_docs(conn, docs_path, incremental, docs_table)
+                load_ableton_struct(conn, struct_path, incremental, scope)
                 load_refs_graph(conn, refs_path, incremental, refs_table)
                 load_scan_state(conn, scan_state_path, scan_state_table)
                 load_audio_analysis(conn, file_index_table, scope)

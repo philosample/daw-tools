@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "abletools file_index.jsonl record",
+  "type": "object",
+  "required": ["path", "ext", "size", "mtime", "kind", "scanned_at", "scope"],
+  "properties": {
+    "path": {"type": "string"},
+    "path_hash": {"type": "string"},
+    "ext": {"type": "string"},
+    "size": {"type": "integer"},
+    "mtime": {"type": "integer"},
+    "ctime": {"type": "integer"},
+    "atime": {"type": "integer"},
+    "inode": {"type": "integer"},
+    "device": {"type": "integer"},
+    "mode": {"type": "integer"},
+    "uid": {"type": "integer"},
+    "gid": {"type": "integer"},
+    "is_symlink": {"type": "boolean"},
+    "symlink_target": {"type": ["string", "null"]},
+    "name": {"type": "string"},
+    "parent": {"type": "string"},
+    "mime": {"type": ["string", "null"]},
+    "kind": {
+      "type": "string",
+      "enum": ["ableton_doc", "ableton_artifact", "media", "other"]
+    },
+    "scanned_at": {"type": "integer"},
+    "scope": {
+      "type": "string",
+      "enum": ["live_recordings", "user_library", "preferences"]
+    },
+    "sha1": {"type": "string"},
+    "sha1_error": {"type": "string"},
+    "audio_duration": {"type": "number"},
+    "audio_sample_rate": {"type": "integer"},
+    "audio_channels": {"type": "integer"},
+    "audio_bit_depth": {"type": "integer"},
+    "audio_codec": {"type": "string"}
+  },
+  "additionalProperties": true
+}

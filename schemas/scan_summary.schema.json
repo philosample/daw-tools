@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "abletools scan_summary.json",
+  "type": "object",
+  "required": ["root", "out", "scope", "started_at", "finished_at", "generated_at"],
+  "properties": {
+    "root": {"type": "string"},
+    "out": {"type": "string"},
+    "scope": {"type": "string"},
+    "started_at": {"type": "integer"},
+    "finished_at": {"type": "integer"},
+    "generated_at": {"type": "string"},
+    "duration_sec": {"type": "number"},
+    "files_scanned": {"type": "integer"},
+    "files_indexed": {"type": "integer"},
+    "ableton_docs_parsed": {"type": "integer"},
+    "ableton_sets": {"type": "integer"},
+    "ableton_artifacts": {"type": "integer"},
+    "files_total": {"type": "integer"},
+    "files_skipped": {"type": "integer"},
+    "dirs_skipped": {"type": "integer"},
+    "all_files": {"type": "boolean"},
+    "by_ext": {"type": "object"},
+    "refs_total": {"type": "integer"},
+    "refs_missing": {"type": "integer"},
+    "top_dirs": {"type": "array"}
+  },
+  "additionalProperties": true
+}

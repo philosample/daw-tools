@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "abletools preferences payload",
+  "type": "object",
+  "properties": {
+    "raw": {"type": "string"},
+    "lines": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "raw": {"type": "string"},
+          "kind": {"type": "string"},
+          "key": {"type": "string"},
+          "value": {"type": "string"}
+        },
+        "additionalProperties": true
+      }
+    },
+    "values": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": {"type": "string"}
+      }
+    },
+    "options": {
+      "type": "array",
+      "items": {"type": "string"}
+    }
+  },
+  "additionalProperties": true
+}

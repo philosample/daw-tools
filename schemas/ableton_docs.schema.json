@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "abletools ableton_docs.jsonl record",
+  "type": "object",
+  "required": ["path", "ext", "kind", "scanned_at"],
+  "properties": {
+    "path": {"type": "string"},
+    "ext": {"type": "string"},
+    "kind": {
+      "type": "string",
+      "enum": ["ableton_doc", "ableton_artifact"]
+    },
+    "scanned_at": {"type": "integer"},
+    "error": {"type": "string"},
+    "summary": {
+      "type": "object",
+      "properties": {
+        "tracks": {
+          "type": "object",
+          "properties": {
+            "audio": {"type": "integer"},
+            "midi": {"type": "integer"},
+            "return": {"type": "integer"},
+            "master": {"type": "integer"},
+            "group": {"type": "integer"},
+            "folded_group": {"type": "integer"},
+            "total": {"type": "integer"}
+          },
+          "additionalProperties": true
+        },
+        "clips": {
+          "type": "object",
+          "properties": {
+            "audio": {"type": "integer"},
+            "midi": {"type": "integer"},
+            "total": {"type": "integer"}
+          },
+          "additionalProperties": true
+        },
+        "sample_refs": {"type": "array", "items": {"type": "string"}},
+        "device_hints": {"type": "array", "items": {"type": "string"}},
+        "device_sequence": {"type": "array", "items": {"type": "string"}},
+        "tempo": {"type": ["number", "null"]}
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

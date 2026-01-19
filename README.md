@@ -6,6 +6,7 @@ Abletools is a local toolkit for indexing, searching, and analyzing Ableton Live
 - Multi-scope scans: `live_recordings`, `user_library`, and `preferences`.
 - Incremental scanning with optional rehashing.
 - JSONL catalogs plus a consolidated SQLite database.
+- Structured XML extraction for Ableton docs and artifacts.
 - Preferences auto-detection and JSON conversion.
 - UI for scanning, catalog browsing, and tools like RAMify.
 
@@ -38,6 +39,7 @@ Scopes:
 Outputs (per scope):
 - `file_index_<scope>.jsonl`
 - `ableton_docs_<scope>.jsonl`
+- `ableton_struct_<scope>.jsonl`
 - `refs_graph_<scope>.jsonl`
 - `scan_state_<scope>.json`
 
@@ -70,6 +72,9 @@ python abletools_analytics.py ./.abletools_catalog/abletools_catalog.sqlite
 
 # Maintenance (ANALYZE + PRAGMA optimize)
 python abletools_maintenance.py ./.abletools_catalog/abletools_catalog.sqlite --analyze --optimize
+
+# Validate JSON/JSONL outputs against schemas
+python abletools_schema_validate.py ./.abletools_catalog
 ```
 
 ## Project Layout
@@ -89,6 +94,7 @@ resources/                 # Images, icons, and media assets
 - `docs/PRODUCT_TASKS.md`
 - `docs/ANALYTICS_IDEAS.md`
 - `docs/UI_VIEWS.md`
+- `docs/SCHEMAS.md`
 
 ## Notes
 - Catalogs are stored locally; no telemetry or remote upload.

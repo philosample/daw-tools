@@ -2,9 +2,9 @@
 
 ## Ableton Live Sets
 - Deep parsing of ALS/ALSX:
-  - Track hierarchy, device chains, clip metadata, tempo/key.
-  - Warp markers, automation, and routing.
-  - Plugin preset names and device parameters.
+  - Track hierarchy, clip metadata, devices, and routing (baseline now captured).
+  - Warp markers, automation, and device parameters.
+  - Plugin preset names and per-device settings.
 
 ## Samples and Audio
 - Audio analysis:
@@ -25,4 +25,3 @@
 ## Preferences
 - Decode binary fields to structured values.
 - Extract user library root, packs, and custom locations.
-

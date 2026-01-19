@@ -3,7 +3,7 @@ from __future__ import annotations
 import wave
 from pathlib import Path
 
-from abletools_scan import analyze_audio, parse_ableton_doc
+from abletools_scan import analyze_audio, parse_ableton_doc, parse_ableton_xml
 
 
 def test_parse_ableton_doc_counts() -> None:
@@ -40,3 +40,24 @@ def test_analyze_audio_wav(tmp_path: Path) -> None:
     assert info["audio_sample_rate"] == 48000
     assert info["audio_bit_depth"] == 16
     assert info["audio_duration"]
+
+
+def test_parse_ableton_xml_structured() -> None:
+    text = """
+    <Ableton>
+      <AudioTrack Name=\"Track 1\">
+        <AudioClip Name=\"Clip A\" Length=\"4.0\" />
+        <DeviceChain>
+          <Device Name=\"Echo\" />
+          <PluginDevice DeviceName=\"EQ Eight\" />
+        </DeviceChain>
+        <InputRouting Value=\"In 1\" />
+        <OutputRouting Value=\"Master\" />
+      </AudioTrack>
+    </Ableton>
+    """
+    summary = parse_ableton_xml(text)
+    assert summary["tracks"]
+    assert summary["tracks"][0]["name"] == "Track 1"
+    assert summary["clips"]
+    assert summary["devices"]

@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import logging
 import queue
+import random
 import sqlite3
 import subprocess
 import sys
@@ -759,9 +760,11 @@ class CatalogPanel(tk.Frame):
             except Exception:
                 return 0.0
 
-        if column in {"size", "tracks", "clips"}:
-            items.sort(key=lambda t: to_number(t[0]), reverse=reverse)
+        if column in {"size"}:
+            items.sort(key=lambda t: self._parse_size_display(t[0]), reverse=reverse)
         elif column in {"mtime"}:
+            items.sort(key=lambda t: self._parse_mtime_display(t[0]), reverse=reverse)
+        elif column in {"tracks", "clips"}:
             items.sort(key=lambda t: to_number(t[0]), reverse=reverse)
         else:
             items.sort(key=lambda t: t[0].lower(), reverse=reverse)
@@ -785,6 +788,63 @@ class CatalogPanel(tk.Frame):
             return path
         keep = max_len // 2
         return f"{path[:keep]}…{path[-keep:]}"
+
+    def _format_bytes(self, value: object) -> str:
+        try:
+            size = int(value)
+        except Exception:
+            return ""
+        if size < 0:
+            return ""
+        units = ["B", "KB", "MB", "GB", "TB"]
+        size_float = float(size)
+        unit_idx = 0
+        while size_float >= 1024.0 and unit_idx < len(units) - 1:
+            size_float /= 1024.0
+            unit_idx += 1
+        if unit_idx == 0:
+            return f"{int(size_float)} {units[unit_idx]}"
+        return f"{size_float:.1f} {units[unit_idx]}"
+
+    def _format_mtime(self, value: object) -> str:
+        try:
+            ts = int(value)
+        except Exception:
+            return ""
+        if ts <= 0:
+            return ""
+        try:
+            return datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:
+            return ""
+
+    def _parse_size_display(self, value: str) -> float:
+        if not value:
+            return 0.0
+        parts = value.strip().split()
+        if not parts:
+            return 0.0
+        try:
+            num = float(parts[0])
+        except Exception:
+            return 0.0
+        unit = parts[1].upper() if len(parts) > 1 else "B"
+        scale = {
+            "B": 1.0,
+            "KB": 1024.0,
+            "MB": 1024.0**2,
+            "GB": 1024.0**3,
+            "TB": 1024.0**4,
+        }.get(unit, 1.0)
+        return num * scale
+
+    def _parse_mtime_display(self, value: str) -> float:
+        if not value:
+            return 0.0
+        try:
+            return datetime.strptime(value, "%Y-%m-%d %H:%M:%S").timestamp()
+        except Exception:
+            return 0.0
 
     def _set_detail_fields(self, fields: list[tuple[str, str]]) -> None:
         for idx, (label, value) in enumerate(self.detail_rows):
@@ -918,7 +978,7 @@ class CatalogPanel(tk.Frame):
                         values = {
                             "kind": row[0],
                             "source": row[1],
-                            "mtime": str(row[2]),
+                            "mtime": self._format_mtime(row[2]),
                             "scope": "preferences",
                         }
                         self._last_rows.append(values)
@@ -929,8 +989,8 @@ class CatalogPanel(tk.Frame):
                             "name": name,
                             "path_full": row[0],
                             "ext": row[1],
-                            "size": str(row[2]),
-                            "mtime": str(row[3]),
+                            "size": self._format_bytes(row[2]),
+                            "mtime": self._format_mtime(row[3]),
                             "tracks": "" if row[4] is None else str(row[4]),
                             "clips": "" if row[5] is None else str(row[5]),
                             "devices": "yes" if row[6] else "no",
@@ -944,14 +1004,14 @@ class CatalogPanel(tk.Frame):
                             "name": name,
                             "path_full": row[0],
                             "ext": row[1],
-                            "size": str(row[2]),
-                            "mtime": str(row[3]),
+                            "size": self._format_bytes(row[2]),
+                            "mtime": self._format_mtime(row[3]),
                             "tracks": "" if row[4] is None else str(row[4]),
                             "clips": "" if row[5] is None else str(row[5]),
                             "devices": "yes" if row[6] else "no",
                             "samples": "yes" if row[7] else "no",
                             "missing": "yes" if row[8] else "no",
-                            "scanned_at": str(row[9]),
+                            "scanned_at": self._format_mtime(row[9]),
                             "scope": row[10],
                         }
                     row_values = [values.get(col, "") for col in self.visible_columns]
@@ -965,7 +1025,7 @@ class CatalogPanel(tk.Frame):
                 self._set_detail_message(
                     "Catalog not built yet. Updating database and retrying..."
                 )
-                self.app.refresh_catalog_db()
+                self.app.refresh_catalog_db(background=False)
                 return self.refresh()
             self._set_detail_message(f"Failed to load catalog: {exc}")
         except Exception as exc:
@@ -1004,12 +1064,19 @@ class CatalogPanel(tk.Frame):
                         self._set_detail_message("Preference not found.")
                         return
                     payload = json.loads(row["payload_json"]) if row["payload_json"] else {}
+                    value_keys = ""
+                    if isinstance(payload, dict):
+                        values = payload.get("values")
+                        if isinstance(values, dict):
+                            value_keys = str(len(values))
                     fields = [
                         ("Kind", row["kind"]),
                         ("Source", self._truncate_path(row["source"], 80)),
-                        ("Modified", str(row["mtime"])),
+                        ("Modified", self._format_mtime(row["mtime"])),
                         ("Keys", ", ".join(sorted(payload.keys()))[:80]),
                     ]
+                    if value_keys:
+                        fields.append(("Value keys", value_keys))
                     self._set_detail_fields(fields)
                     return
 
@@ -1068,8 +1135,8 @@ class CatalogPanel(tk.Frame):
         fields = [
             ("Path", self._truncate_path(doc["path"], 80)),
             ("Ext", file_row["ext"] if file_row else ""),
-            ("Size", str(file_row["size"] if file_row else "")),
-            ("Modified", str(file_row["mtime"] if file_row else "")),
+            ("Size", self._format_bytes(file_row["size"]) if file_row else ""),
+            ("Modified", self._format_mtime(file_row["mtime"]) if file_row else ""),
             ("Tracks", str(doc["tracks_total"])),
             ("Clips", str(doc["clips_total"])),
             ("Devices", str(devices)),
@@ -1095,7 +1162,7 @@ class ScanPanel(ttk.LabelFrame):
         self.scope_var = tk.StringVar(value="live_recordings")
         self.all_files_var = tk.BooleanVar(value=True)
         self.analyze_audio_var = tk.BooleanVar(value=False)
-        self.log_visible = tk.BooleanVar(value=False)
+        self.log_visible = tk.BooleanVar(value=True)
 
         self._proc: subprocess.Popen | None = None
         self._q: queue.Queue[str] = queue.Queue()
@@ -1197,7 +1264,38 @@ class ScanPanel(ttk.LabelFrame):
 
         self.log_frame = tk.Frame(self, bg=PANEL)
         self.log_frame.grid(row=3, column=0, columnspan=3, sticky="nsew", pady=(10, 0))
-        self.log_frame.grid_remove()
+        self.log_frame.columnconfigure(1, weight=1)
+        self.log_frame.rowconfigure(0, weight=1)
+
+        self.matrix_panel = tk.Frame(self.log_frame, bg=PANEL)
+        self.matrix_panel.grid(row=0, column=0, sticky="nsw", padx=(0, 10))
+        self.matrix_panel.columnconfigure(0, weight=1)
+        self.matrix_panel.rowconfigure(0, weight=1)
+
+        self.matrix_text = tk.Text(
+            self.matrix_panel,
+            bg=PANEL,
+            fg=ACCENT_SOFT,
+            insertbackground=ACCENT_SOFT,
+            relief="flat",
+            font=MONO_FONT,
+            wrap="none",
+            width=22,
+        )
+        self.matrix_text.grid(row=0, column=0, sticky="nsew")
+        self.matrix_text.configure(state="disabled")
+        self.matrix_text.bind("<Key>", lambda _event: "break")
+        self.matrix_text.bind("<Control-v>", lambda _event: "break")
+        self.matrix_text.bind("<Command-v>", lambda _event: "break")
+
+        self.scanner_label = tk.Label(self.matrix_panel, bg=PANEL)
+        self.scanner_label.grid(row=1, column=0, sticky="s", pady=(8, 0))
+        self.scanner_gif = AnimatedGif(
+            self.scanner_label,
+            ABLETOOLS_DIR / "resources" / "scanners4-1920341542.gif",
+            delay_ms=80,
+            subsample=2,
+        )
 
         self.log_text = tk.Text(
             self.log_frame,
@@ -1210,8 +1308,8 @@ class ScanPanel(ttk.LabelFrame):
         )
         self.log_scroll = tk.Scrollbar(self.log_frame, command=self.log_text.yview)
         self.log_text.configure(yscrollcommand=self.log_scroll.set)
-        self.log_text.pack(side="left", fill="both", expand=True)
-        self.log_scroll.pack(side="right", fill="y")
+        self.log_text.grid(row=0, column=1, sticky="nsew")
+        self.log_scroll.grid(row=0, column=2, sticky="ns")
         self.log_text.bind("<Key>", lambda _event: "break")
         self.log_text.bind("<Control-v>", lambda _event: "break")
         self.log_text.bind("<Command-v>", lambda _event: "break")
@@ -1221,6 +1319,13 @@ class ScanPanel(ttk.LabelFrame):
 
         self.columnconfigure(1, weight=1)
         self.rowconfigure(3, weight=1)
+
+        self._matrix_job: Optional[str] = None
+        self._matrix_chars = "0123456789abcdef"
+        self._matrix_rows = 14
+        self._matrix_cols = 20
+        self._progress_total: Optional[int] = None
+        self.set_log_visible(True)
 
     def _toggle_log(self) -> None:
         if self.log_visible.get():
@@ -1232,6 +1337,51 @@ class ScanPanel(ttk.LabelFrame):
             self.log_visible.set(True)
             self.log_toggle.configure(text="Hide Log")
             self.update_idletasks()
+
+    def set_log_visible(self, visible: bool) -> None:
+        if visible:
+            self.log_frame.grid()
+            self.log_visible.set(True)
+            self.log_toggle.configure(text="Hide Log")
+            if self._proc is not None:
+                self._start_matrix()
+                self.scanner_gif.start()
+        else:
+            self.log_frame.grid_remove()
+            self.log_visible.set(False)
+            self.log_toggle.configure(text="Show Log")
+            self._stop_matrix()
+            self.scanner_gif.stop()
+
+    def _matrix_tick(self) -> None:
+        if self._matrix_job is None or not self.log_visible.get():
+            return
+        rows = []
+        for _ in range(self._matrix_rows):
+            row = "".join(random.choice(self._matrix_chars) for _ in range(self._matrix_cols))
+            rows.append(row)
+        self.matrix_text.configure(state="normal")
+        self.matrix_text.delete("1.0", "end")
+        self.matrix_text.insert("end", "\n".join(rows))
+        self.matrix_text.configure(state="disabled")
+        self._matrix_job = self.after(120, self._matrix_tick)
+
+    def _start_matrix(self) -> None:
+        if self._matrix_job is not None:
+            return
+        self._matrix_job = self.after(0, self._matrix_tick)
+
+    def _stop_matrix(self) -> None:
+        if self._matrix_job is None:
+            return
+        try:
+            self.after_cancel(self._matrix_job)
+        except Exception:
+            pass
+        self._matrix_job = None
+        self.matrix_text.configure(state="normal")
+        self.matrix_text.delete("1.0", "end")
+        self.matrix_text.configure(state="disabled")
 
     def _browse(self) -> None:
         p = filedialog.askdirectory(
@@ -1266,6 +1416,7 @@ class ScanPanel(ttk.LabelFrame):
             self.root_var.set(str(root))
 
     def _append_log(self, line: str) -> None:
+        self._handle_progress_line(line)
         stamp = datetime.now().strftime("%H:%M:%S")
         formatted = f"[{stamp}] {line.rstrip('\n')}"
         self.log_text.insert("end", formatted + "\n")
@@ -1273,6 +1424,32 @@ class ScanPanel(ttk.LabelFrame):
         if self._log_file:
             self._log_file.write(formatted + "\n")
             self._log_file.flush()
+
+    def _handle_progress_line(self, line: str) -> None:
+        if not line.startswith("[progress]"):
+            return
+        parts = line.replace("[progress]", "").strip().split()
+        data = {}
+        for part in parts:
+            if "=" in part:
+                key, val = part.split("=", 1)
+                data[key.strip()] = val.strip()
+        total = data.get("total")
+        percent = data.get("percent")
+        if total:
+            try:
+                self._progress_total = int(total)
+            except ValueError:
+                self._progress_total = None
+        if percent:
+            try:
+                pct = float(percent)
+            except ValueError:
+                return
+            self.progress.stop()
+            self.progress.configure(mode="determinate", maximum=100)
+            self.progress["value"] = pct
+            self.status_var.set(f"Running... {pct:.1f}%")
 
     def _enqueue(self, s: str) -> None:
         self._q.put(s)
@@ -1342,10 +1519,14 @@ class ScanPanel(ttk.LabelFrame):
             self._set_running(False)
 
     def _build_db(self) -> None:
+        if not self.app._db_refresh_lock.acquire(blocking=False):
+            self._enqueue("DB update already running; skipping.")
+            return
         catalog_dir = self.app.catalog_dir()
         db_script = self.app.abletools_dir / "abletools_catalog_db.py"
         if not db_script.exists():
             self._enqueue("WARN: abletools_catalog_db.py missing; DB not updated.")
+            self.app._db_refresh_lock.release()
             return
         self._enqueue(f"DB update: {db_script}")
         cmd = [sys.executable, str(db_script), str(catalog_dir), "--append"]
@@ -1356,29 +1537,30 @@ class ScanPanel(ttk.LabelFrame):
                 capture_output=True,
                 text=True,
             )
+            if proc.stdout:
+                self._enqueue(proc.stdout.strip())
+            if proc.returncode != 0:
+                self._enqueue(proc.stderr.strip() or "DB update failed.")
+                return
+
+            analytics = self.app.abletools_dir / "abletools_analytics.py"
+            db_path = self.app.resolve_catalog_db_path()
+            if analytics.exists() and db_path:
+                try:
+                    proc = subprocess.run(
+                        [sys.executable, str(analytics), str(db_path)],
+                        cwd=str(self.app.abletools_dir),
+                        capture_output=True,
+                        text=True,
+                    )
+                    if proc.returncode != 0:
+                        self._enqueue(proc.stderr.strip() or "Analytics update failed.")
+                except Exception as exc:
+                    self._enqueue(f"Analytics update failed: {exc}")
         except Exception as exc:
             self._enqueue(f"DB update failed: {exc}")
-            return
-        if proc.stdout:
-            self._enqueue(proc.stdout.strip())
-        if proc.returncode != 0:
-            self._enqueue(proc.stderr.strip() or "DB update failed.")
-            return
-
-        analytics = self.app.abletools_dir / "abletools_analytics.py"
-        db_path = self.app.resolve_catalog_db_path()
-        if analytics.exists() and db_path:
-            try:
-                proc = subprocess.run(
-                    [sys.executable, str(analytics), str(db_path)],
-                    cwd=str(self.app.abletools_dir),
-                    capture_output=True,
-                    text=True,
-                )
-                if proc.returncode != 0:
-                    self._enqueue(proc.stderr.strip() or "Analytics update failed.")
-            except Exception as exc:
-                self._enqueue(f"Analytics update failed: {exc}")
+        finally:
+            self.app._db_refresh_lock.release()
 
     def _set_running(self, running: bool) -> None:
         def _apply() -> None:
@@ -1387,9 +1569,14 @@ class ScanPanel(ttk.LabelFrame):
             if running:
                 self.progress.start(10)
                 self.gif.start()
+                if self.log_visible.get():
+                    self._start_matrix()
+                    self.scanner_gif.start()
             else:
                 self.progress.stop()
                 self.gif.stop()
+                self._stop_matrix()
+                self.scanner_gif.stop()
                 if self._log_file:
                     self._log_file.close()
                     self._log_file = None
@@ -1431,11 +1618,14 @@ class ScanPanel(ttk.LabelFrame):
                     cmd.append("--rehash-all")
             if not self.all_files_var.get():
                 cmd.append("--only-known")
+            cmd.append("--progress")
             cmd.append("--verbose")
             cmds.append(cmd)
 
         self.status_var.set("Running...")
         self._set_running(True)
+        self.progress.configure(mode="indeterminate")
+        self._progress_total = None
 
         if self.log_visible.get():
             self.log_text.delete("1.0", "end")
@@ -1763,6 +1953,12 @@ class SettingsPanel(tk.Frame):
         ).pack(side="left")
         ttk.Button(
             btns,
+            text="Audit Missing",
+            style="Ghost.TButton",
+            command=self.app.audit_missing_refs,
+        ).pack(side="left", padx=(8, 0))
+        ttk.Button(
+            btns,
             text="Optimize DB",
             style="Ghost.TButton",
             command=self.app.run_maintenance,
@@ -1783,6 +1979,8 @@ class PreferencesPanel(tk.Frame):
         super().__init__(master, bg=BG)
         self.app = app
         self.show_raw_var = tk.BooleanVar(value=False)
+        self.source_var = tk.StringVar(value="")
+        self.source_items: list[tuple[str, str, int]] = []
         self._build()
 
     def _build(self) -> None:
@@ -1817,34 +2015,60 @@ class PreferencesPanel(tk.Frame):
         body = tk.Frame(self, bg=BG)
         body.pack(fill="both", expand=True, padx=16, pady=(0, 16))
         body.columnconfigure(0, weight=1)
-        body.columnconfigure(1, weight=1)
+        body.columnconfigure(1, weight=2)
         body.rowconfigure(0, weight=1)
 
         left = tk.Frame(body, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
         left.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
-        left.rowconfigure(1, weight=1)
         left.columnconfigure(0, weight=1)
 
-        tk.Label(left, text="Sources", font=H2_FONT, fg=TEXT, bg=PANEL).grid(
+        tk.Label(left, text="Sources", font=H2_FONT, fg=TEXT, bg=PANEL).pack(
+            anchor="w", padx=12, pady=(10, 6)
+        )
+        self.sources_combo = ttk.Combobox(
+            left,
+            textvariable=self.source_var,
+            state="readonly",
+        )
+        self.sources_combo.pack(fill="x", padx=12, pady=(0, 12))
+        self.sources_combo.bind("<<ComboboxSelected>>", self._on_select)
+
+        right = tk.Frame(body, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
+        right.grid(row=0, column=1, sticky="nsew", padx=(10, 0))
+        right.columnconfigure(0, weight=1)
+        right.rowconfigure(2, weight=1)
+
+        tk.Label(right, text="Details", font=H2_FONT, fg=TEXT, bg=PANEL).grid(
             row=0, column=0, sticky="w", padx=12, pady=(10, 6)
         )
-        self.sources = ttk.Treeview(left, columns=("kind", "source"), show="headings")
-        self.sources.heading("kind", text="Kind")
-        self.sources.heading("source", text="Source")
-        self.sources.column("kind", width=90, anchor="center")
-        self.sources.column("source", width=420)
-        self.sources.grid(row=1, column=0, sticky="nsew", padx=12, pady=(0, 12))
-        self.sources.bind("<<TreeviewSelect>>", self._on_select)
-
-        right = tk.Frame(
-            body, bg=PANEL, highlightbackground=BORDER, highlightthickness=1
-        )
-        right.grid(row=0, column=1, sticky="nsew", padx=(10, 0))
-        right.rowconfigure(1, weight=1)
-        right.columnconfigure(0, weight=1)
+        self.detail_frame = tk.Frame(right, bg=PANEL)
+        self.detail_frame.grid(row=1, column=0, sticky="we", padx=12, pady=(0, 8))
+        self.detail_rows: list[tuple[tk.Label, tk.Label]] = []
+        for _ in range(10):
+            label = tk.Label(
+                self.detail_frame,
+                text="",
+                font=BODY_FONT,
+                fg=MUTED,
+                bg=PANEL,
+                anchor="e",
+                width=12,
+            )
+            value = tk.Label(
+                self.detail_frame,
+                text="",
+                font=BODY_FONT,
+                fg=TEXT,
+                bg=PANEL,
+                anchor="w",
+            )
+            row = len(self.detail_rows)
+            label.grid(row=row, column=0, sticky="e", padx=(0, 6), pady=2)
+            value.grid(row=row, column=1, sticky="w", pady=2)
+            self.detail_rows.append((label, value))
 
         tk.Label(right, text="Parsed JSON", font=H2_FONT, fg=TEXT, bg=PANEL).grid(
-            row=0, column=0, sticky="w", padx=12, pady=(10, 6)
+            row=2, column=0, sticky="w", padx=12, pady=(6, 6)
         )
         self.payload = tk.Text(
             right,
@@ -1853,14 +2077,17 @@ class PreferencesPanel(tk.Frame):
             insertbackground=TEXT,
             relief="flat",
             font=MONO_FONT,
+            wrap="none",
         )
-        self.payload.grid(row=1, column=0, sticky="nsew", padx=12, pady=(0, 12))
+        self.payload.grid(row=3, column=0, sticky="nsew", padx=12, pady=(0, 12))
         self.payload.configure(state="disabled")
 
     def refresh(self) -> None:
-        self.sources.delete(*self.sources.get_children())
+        self.sources_combo["values"] = []
+        self.source_items = []
         self._set_payload("No preferences loaded.")
         self._set_status("")
+        self._set_detail_fields([])
         db_path = self.app.resolve_prefs_db_path()
         if not db_path or not db_path.exists():
             self._set_payload("Database not found. Run a scan or prefs refresh.")
@@ -1870,7 +2097,7 @@ class PreferencesPanel(tk.Frame):
                 for row in conn.execute(
                     "SELECT kind, source, mtime FROM ableton_prefs ORDER BY mtime DESC"
                 ):
-                    self.sources.insert("", "end", values=(row[0], row[1]))
+                    self.source_items.append((row[0], row[1], row[2]))
         except sqlite3.OperationalError as exc:
             self._set_payload(f"Preferences table missing: {exc}")
             self._set_status(str(exc))
@@ -1882,9 +2109,10 @@ class PreferencesPanel(tk.Frame):
             self.app.log_ui_error(f"prefs refresh: {exc}")
             return
 
-        items = self.sources.get_children()
-        if items:
-            self.sources.selection_set(items[0])
+        display = [self._format_source_entry(*row) for row in self.source_items]
+        self.sources_combo["values"] = display
+        if display:
+            self.sources_combo.current(0)
             self._on_select(None)
 
     def _set_payload(self, text: str) -> None:
@@ -1897,13 +2125,10 @@ class PreferencesPanel(tk.Frame):
         self.status_var.set(text)
 
     def _on_select(self, _event: object) -> None:
-        selection = self.sources.selection()
-        if not selection:
+        idx = self.sources_combo.current()
+        if idx < 0 or idx >= len(self.source_items):
             return
-        values = self.sources.item(selection[0], "values")
-        if not values:
-            return
-        kind, source = values[0], values[1]
+        kind, source, mtime = self.source_items[idx]
         db_path = self.app.resolve_prefs_db_path()
         if not db_path or not db_path.exists():
             self._set_payload("Database not found.")
@@ -1931,6 +2156,13 @@ class PreferencesPanel(tk.Frame):
                     + "\n\n... (truncated, enable export if you need full payload)"
                 )
             self._set_payload(payload_text)
+            self._set_detail_fields(
+                [
+                    ("Kind", kind),
+                    ("Source", self._truncate_path(source, 80)),
+                    ("Modified", self._format_mtime(mtime)),
+                ]
+            )
             return
         try:
             payload = json.loads(payload_text)
@@ -1940,8 +2172,69 @@ class PreferencesPanel(tk.Frame):
             self.app.log_ui_error(f"prefs parse: {exc}")
             return
 
+        fields = self._extract_pref_fields(kind, source, mtime, payload)
+        self._set_detail_fields(fields)
         summary = self._summarize_payload(kind, source, payload)
         self._set_payload(summary)
+
+    def _set_detail_fields(self, fields: list[tuple[str, str]]) -> None:
+        for idx, (label, value) in enumerate(self.detail_rows):
+            if idx < len(fields):
+                label.configure(text=f"{fields[idx][0]}:")
+                value.configure(text=fields[idx][1])
+            else:
+                label.configure(text="")
+                value.configure(text="")
+
+    def _extract_pref_fields(
+        self, kind: str, source: str, mtime: int, payload: dict
+    ) -> list[tuple[str, str]]:
+        keys = []
+        value_keys = ""
+        lines_count = ""
+        options_count = ""
+        if isinstance(payload, dict):
+            keys = sorted(payload.keys())
+            if "values" in payload and isinstance(payload["values"], dict):
+                value_keys = str(len(payload["values"]))
+            if "lines" in payload and isinstance(payload["lines"], list):
+                lines_count = str(len(payload["lines"]))
+            if "options" in payload and isinstance(payload["options"], list):
+                options_count = str(len(payload["options"]))
+        fields = [
+            ("Kind", kind),
+            ("Source", self._truncate_path(source, 80)),
+            ("Modified", self._format_mtime(mtime)),
+            ("Keys", ", ".join(keys)[:120]),
+        ]
+        if value_keys:
+            fields.append(("Value keys", value_keys))
+        if lines_count:
+            fields.append(("Lines", lines_count))
+        if options_count:
+            fields.append(("Options", options_count))
+        return fields
+
+    def _format_source_entry(self, kind: str, source: str, _mtime: int) -> str:
+        return f"{kind} | {source}"
+
+    def _format_mtime(self, value: object) -> str:
+        try:
+            ts = int(value)
+        except Exception:
+            return ""
+        if ts <= 0:
+            return ""
+        try:
+            return datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:
+            return ""
+
+    def _truncate_path(self, path: str, max_len: int = 80) -> str:
+        if len(path) <= max_len:
+            return path
+        keep = max_len // 2
+        return f"{path[:keep]}…{path[-keep:]}"
 
     def _summarize_payload(self, kind: str, source: str, payload: dict) -> str:
         lines = [f"Kind: {kind}", f"Source: {source}"]
@@ -2295,6 +2588,10 @@ class AbletoolsUI(tk.Tk):
 
         if name == "dashboard":
             self.refresh_dashboard()
+        elif name == "scan":
+            scan = self._views.get("scan")
+            if isinstance(scan, ScanView):
+                scan.scan_panel.set_log_visible(True)
         elif name == "catalog":
             catalog = self._views.get("catalog")
             if isinstance(catalog, CatalogPanel):
@@ -2459,7 +2756,13 @@ class AbletoolsUI(tk.Tk):
         except Exception:
             messagebox.showwarning("Could not open folder", str(folder))
 
-    def refresh_catalog_db(self) -> None:
+    def refresh_catalog_db(self, background: bool = True) -> None:
+        if background:
+            threading.Thread(target=self._refresh_catalog_db_worker, daemon=True).start()
+            return
+        self._refresh_catalog_db_worker()
+
+    def _refresh_catalog_db_worker(self) -> None:
         if not self._db_refresh_lock.acquire(blocking=False):
             self._log_event("DB", "refresh_catalog_db skipped: already running")
             return
@@ -2467,7 +2770,7 @@ class AbletoolsUI(tk.Tk):
             catalog_dir = self.catalog_dir()
             db_script = self.abletools_dir / "abletools_catalog_db.py"
             if not db_script.exists():
-                messagebox.showerror("Catalog", "Database script not found.")
+                self.after(0, messagebox.showerror, "Catalog", "Database script not found.")
                 self._log_event("ERROR", "refresh_catalog_db: script missing")
                 return
             catalog_dir.mkdir(parents=True, exist_ok=True)
@@ -2480,12 +2783,15 @@ class AbletoolsUI(tk.Tk):
                     text=True,
                 )
             except Exception as exc:
-                messagebox.showerror("Catalog", f"Failed to update DB:\n{exc}")
+                self.after(0, messagebox.showerror, "Catalog", f"Failed to update DB:\n{exc}")
                 self._log_event("ERROR", f"refresh_catalog_db: {exc}")
                 return
             if proc.returncode != 0:
-                messagebox.showerror(
-                    "Catalog", proc.stderr.strip() or "Database update failed."
+                self.after(
+                    0,
+                    messagebox.showerror,
+                    "Catalog",
+                    proc.stderr.strip() or "Database update failed.",
                 )
                 self._log_event("ERROR", f"refresh_catalog_db: {proc.stderr.strip()}")
         finally:
@@ -2497,30 +2803,43 @@ class AbletoolsUI(tk.Tk):
             messagebox.showinfo("Analytics", "No database found yet.")
             self._log_event("ANALYTICS", "db missing")
             return
-        self.refresh_catalog_db()
-        analytics = self.abletools_dir / "abletools_analytics.py"
-        if not analytics.exists():
-            messagebox.showerror("Analytics", f"Missing analytics script:\n{analytics}")
-            self._log_event("ERROR", f"run_analytics: script missing {analytics}")
-            return
-        try:
-            proc = subprocess.run(
-                [sys.executable, str(analytics), str(db_path)],
-                cwd=str(self.abletools_dir),
-                capture_output=True,
-                text=True,
-            )
-        except Exception as exc:
-            messagebox.showerror("Analytics", f"Failed to run analytics:\n{exc}")
-            self._log_event("ERROR", f"run_analytics: {exc}")
-            return
-        if proc.returncode != 0:
-            messagebox.showerror("Analytics", proc.stderr.strip() or "Analytics failed.")
-            self._log_event("ERROR", f"run_analytics: {proc.stderr.strip()}")
-            return
-        self._log_event("ANALYTICS", "completed")
-        messagebox.showinfo("Analytics", "Analytics updated.")
-        self.refresh_dashboard()
+        def _run() -> None:
+            self.refresh_catalog_db(background=False)
+            analytics = self.abletools_dir / "abletools_analytics.py"
+            if not analytics.exists():
+                self.after(
+                    0,
+                    messagebox.showerror,
+                    "Analytics",
+                    f"Missing analytics script:\n{analytics}",
+                )
+                self._log_event("ERROR", f"run_analytics: script missing {analytics}")
+                return
+            try:
+                proc = subprocess.run(
+                    [sys.executable, str(analytics), str(db_path)],
+                    cwd=str(self.abletools_dir),
+                    capture_output=True,
+                    text=True,
+                )
+            except Exception as exc:
+                self.after(0, messagebox.showerror, "Analytics", f"Failed:\n{exc}")
+                self._log_event("ERROR", f"run_analytics: {exc}")
+                return
+            if proc.returncode != 0:
+                self.after(
+                    0,
+                    messagebox.showerror,
+                    "Analytics",
+                    proc.stderr.strip() or "Analytics failed.",
+                )
+                self._log_event("ERROR", f"run_analytics: {proc.stderr.strip()}")
+                return
+            self._log_event("ANALYTICS", "completed")
+            self.after(0, messagebox.showinfo, "Analytics", "Analytics updated.")
+            self.after(0, self.refresh_dashboard)
+
+        threading.Thread(target=_run, daemon=True).start()
 
     def run_targeted_scan(self, scope: str, root: Path) -> None:
         scan_script = self.scan_script_path()
@@ -2608,6 +2927,43 @@ class AbletoolsUI(tk.Tk):
         except Exception as exc:
             self._log_event("ERROR", f"audit_zero_tracks: {exc}")
         return issues
+
+    def audit_missing_refs(self) -> None:
+        db_path = self.resolve_catalog_db_path()
+        if not db_path or not db_path.exists():
+            messagebox.showinfo("Missing Refs", "No database found yet.")
+            return
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        out_path = self.catalog_dir() / f"missing_refs_audit_{timestamp}.txt"
+        try:
+            with sqlite3.connect(db_path) as conn, out_path.open("w", encoding="utf-8") as handle:
+                handle.write(f"missing refs audit {datetime.now().isoformat()}\n")
+                for scope, suffix in (
+                    ("live_recordings", ""),
+                    ("user_library", "_user_library"),
+                    ("preferences", "_preferences"),
+                ):
+                    handle.write(f"\n[{scope}]\n")
+                    cursor = conn.execute(
+                        f"""
+                        SELECT ref_path, COUNT(*) AS cnt, MIN(src) AS sample_src
+                        FROM refs_graph{suffix}
+                        WHERE ref_exists = 0
+                        GROUP BY ref_path
+                        ORDER BY cnt DESC
+                        """
+                    )
+                    rows_written = 0
+                    for ref_path, cnt, sample_src in cursor:
+                        rows_written += 1
+                        handle.write(f"{cnt}\t{ref_path}\t{sample_src}\n")
+                    if rows_written == 0:
+                        handle.write("no missing refs found\n")
+            self._log_event("AUDIT", f"missing refs -> {out_path}")
+            messagebox.showinfo("Missing Refs", f"Saved audit to:\n{out_path}")
+        except Exception as exc:
+            self._log_event("ERROR", f"audit_missing_refs: {exc}")
+            messagebox.showerror("Missing Refs", f"Failed:\n{exc}")
 
     def run_maintenance(self) -> None:
         db_path = self.resolve_catalog_db_path()
@@ -2705,6 +3061,7 @@ class AbletoolsUI(tk.Tk):
         cache_dir = self.catalog_dir()
         cache_dir.mkdir(parents=True, exist_ok=True)
         self.log_path = cache_dir / "abletools.log"
+        self._rotate_log(self.log_path)
         logger = logging.getLogger("abletools")
         logger.setLevel(logging.INFO)
         if not logger.handlers:
@@ -2716,6 +3073,35 @@ class AbletoolsUI(tk.Tk):
             logger.addHandler(handler)
         logger.info("App start")
         return logger
+
+    def _rotate_log(self, path: Path, max_bytes: int = 5_000_000, backups: int = 3) -> None:
+        try:
+            size = path.stat().st_size
+        except FileNotFoundError:
+            return
+        except OSError:
+            return
+        if size <= max_bytes:
+            return
+        for idx in range(backups, 0, -1):
+            src = Path(f"{path}.{idx}")
+            dst = Path(f"{path}.{idx + 1}")
+            if not src.exists():
+                continue
+            if idx == backups:
+                try:
+                    src.unlink()
+                except OSError:
+                    pass
+                continue
+            try:
+                src.replace(dst)
+            except OSError:
+                pass
+        try:
+            path.replace(Path(f"{path}.1"))
+        except OSError:
+            pass
 
     def _log_event(self, kind: str, message: str) -> None:
         if self.logger:

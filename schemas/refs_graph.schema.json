@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "abletools refs_graph.jsonl record",
+  "type": "object",
+  "required": ["src", "src_kind", "ref_kind", "ref_path", "scanned_at"],
+  "properties": {
+    "src": {"type": "string"},
+    "src_kind": {"type": "string"},
+    "ref_kind": {"type": "string"},
+    "ref_path": {"type": "string"},
+    "exists": {"type": "boolean"},
+    "scanned_at": {"type": "integer"}
+  },
+  "additionalProperties": true
+}

@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "abletools ableton_struct.jsonl record",
+  "type": "object",
+  "required": ["path", "ext", "kind", "scanned_at", "parse_method"],
+  "properties": {
+    "path": {"type": "string"},
+    "ext": {"type": "string"},
+    "kind": {
+      "type": "string",
+      "enum": ["ableton_doc", "ableton_artifact"]
+    },
+    "scanned_at": {"type": "integer"},
+    "parse_method": {"type": "string"},
+    "error": {"type": ["string", "null"]},
+    "tracks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "index": {"type": "integer"},
+          "type": {"type": "string"},
+          "name": {"type": "string"},
+          "is_group": {"type": "boolean"},
+          "is_folded": {"type": "boolean"},
+          "meta": {"type": "object"}
+        },
+        "additionalProperties": true
+      }
+    },
+    "clips": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "index": {"type": "integer"},
+          "track_index": {"type": "integer"},
+          "type": {"type": "string"},
+          "name": {"type": "string"},
+          "length": {"type": ["number", "null"]},
+          "meta": {"type": "object"}
+        },
+        "additionalProperties": true
+      }
+    },
+    "devices": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "index": {"type": "integer"},
+          "track_index": {"type": "integer"},
+          "type": {"type": "string"},
+          "name": {"type": "string"},
+          "meta": {"type": "object"}
+        },
+        "additionalProperties": true
+      }
+    },
+    "routings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "track_index": {"type": "integer"},
+          "direction": {"type": "string"},
+          "value": {"type": "string"},
+          "meta": {"type": "object"}
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

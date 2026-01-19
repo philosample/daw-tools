@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Iterable, Optional
+import xml.etree.ElementTree as ET
 
 # ------------------------------------------------------------
 # Config: file types we care about
@@ -36,13 +37,16 @@ SKIP_DIRS = {".git", ".venv", "venv", "__pycache__", ".DS_Store"}
 
 # Ableton docs are typically gzipped XML.
 # We'll parse in a "schema-agnostic" way (heuristics) for MVP.
-RE_TRACK_AUDIO = re.compile(r"<AudioTrack\b", re.IGNORECASE)
-RE_TRACK_MIDI = re.compile(r"<MidiTrack\b", re.IGNORECASE)
-RE_TRACK_RETURN = re.compile(r"<ReturnTrack\b", re.IGNORECASE)
-RE_TRACK_MASTER = re.compile(r"<MasterTrack\b", re.IGNORECASE)
+RE_TRACK_AUDIO = re.compile(r"<(?:\w+:)?AudioTrack\b", re.IGNORECASE)
+RE_TRACK_MIDI = re.compile(r"<(?:\w+:)?MidiTrack\b", re.IGNORECASE)
+RE_TRACK_RETURN = re.compile(r"<(?:\w+:)?ReturnTrack\b", re.IGNORECASE)
+RE_TRACK_MASTER = re.compile(r"<(?:\w+:)?MasterTrack\b", re.IGNORECASE)
+RE_TRACK_GROUP = re.compile(r"<(?:\w+:)?GroupTrack\b", re.IGNORECASE)
+RE_TRACK_FOLD = re.compile(r"<(?:\w+:)?FoldedGroupTrack\b", re.IGNORECASE)
+RE_TRACK_GENERIC = re.compile(r"<(?:\w+:)?Track\b", re.IGNORECASE)
 
-RE_CLIP_AUDIO = re.compile(r"<AudioClip\b", re.IGNORECASE)
-RE_CLIP_MIDI = re.compile(r"<MidiClip\b", re.IGNORECASE)
+RE_CLIP_AUDIO = re.compile(r"<(?:\w+:)?AudioClip\b", re.IGNORECASE)
+RE_CLIP_MIDI = re.compile(r"<(?:\w+:)?MidiClip\b", re.IGNORECASE)
 
 # Paths inside XML can show up in lots of forms; grab common absolute-ish patterns.
 RE_PATHS = re.compile(
@@ -74,6 +78,60 @@ RE_TEMPO = re.compile(r"<Tempo[^>]*Value=\"([0-9.]+)\"", re.IGNORECASE)
 
 MIME_CACHE: dict[str, Optional[str]] = {}
 
+TRACK_TAGS = {
+    "AudioTrack",
+    "MidiTrack",
+    "ReturnTrack",
+    "MasterTrack",
+    "GroupTrack",
+    "FoldedGroupTrack",
+}
+CLIP_TAGS = {"AudioClip", "MidiClip"}
+TRACK_META_KEYS = {
+    "Name",
+    "DisplayName",
+    "ShortName",
+    "Id",
+    "TrackId",
+    "Color",
+    "IsFolded",
+    "IsSolo",
+    "IsMute",
+    "IsArm",
+    "GroupId",
+    "TrackGroupId",
+}
+CLIP_META_KEYS = {
+    "Name",
+    "Id",
+    "Length",
+    "Start",
+    "End",
+    "LoopStart",
+    "LoopEnd",
+    "WarpMode",
+    "IsWarped",
+    "LoopOn",
+}
+DEVICE_META_KEYS = {
+    "Name",
+    "DisplayName",
+    "ShortName",
+    "DeviceName",
+    "PluginName",
+    "Manufacturer",
+    "Vendor",
+    "PluginDesc",
+    "Id",
+    "PresetName",
+}
+ROUTING_META_KEYS = {
+    "InputRouting",
+    "OutputRouting",
+    "InputChannel",
+    "OutputChannel",
+}
+
 
 def _now_iso_local() -> str:
     try:
@@ -101,6 +159,8 @@ def write_scan_summary(
     skipped: int,
     by_ext: Counter[str],
     ableton_sets: int,
+    ableton_artifacts: int,
+    total_files: Optional[int],
     refs_total: int,
     refs_missing: int,
     top_dirs: Counter[str],
@@ -123,8 +183,10 @@ def write_scan_summary(
         "ableton_docs_parsed": int(parsed_docs),
         "files_skipped": int(skipped),
         "dirs_skipped": int(skipped_dirs),
+        "files_total": int(total_files or 0),
         "all_files": bool(all_files),
         "ableton_sets": int(ableton_sets),
+        "ableton_artifacts": int(ableton_artifacts),
         "by_ext": {k: int(v) for k, v in by_ext.most_common()},
         "refs_total": int(refs_total),
         "refs_missing": int(refs_missing),
@@ -164,7 +226,27 @@ def hash_path(path: Path) -> str:
     return hashlib.sha1(str(path).lower().encode("utf-8", errors="ignore")).hexdigest()
 
 
-def read_text_maybe_gzip(path: Path, max_bytes: int = 50_000_000) -> str:
+def _decode_ableton_bytes(raw: bytes) -> str:
+    if not raw:
+        return ""
+    text = raw.decode("utf-8", errors="replace")
+    if "\x00" in text:
+        best = text
+        best_score = text.count("<")
+        for enc in ("utf-16-le", "utf-16-be"):
+            try:
+                candidate = raw.decode(enc, errors="ignore")
+            except Exception:
+                continue
+            score = candidate.count("<")
+            if score > best_score:
+                best = candidate
+                best_score = score
+        text = best.replace("\x00", "")
+    return text
+
+
+def read_text_maybe_gzip(path: Path, max_bytes: int = 200_000_000) -> str:
     """
     Try to read as gzipped text first; fall back to plain text.
     max_bytes is a safety cap to prevent accidental huge decompressions.
@@ -181,10 +263,10 @@ def read_text_maybe_gzip(path: Path, max_bytes: int = 50_000_000) -> str:
                 raise RuntimeError(
                     f"Decompressed data exceeds max_bytes ({max_bytes}) for {path}"
                 )
-            return out.decode("utf-8", errors="replace")
+            return _decode_ableton_bytes(out)
 
     # plain text fallback
-    return raw.decode("utf-8", errors="replace")
+    return _decode_ableton_bytes(raw)
 
 
 def classify(ext: str) -> str:
@@ -235,6 +317,25 @@ def iter_files(
             continue
 
 
+def count_files(
+    root: Path,
+    dir_state: dict[str, int],
+    incremental: bool,
+    all_files: bool,
+    wanted_exts: set[str],
+) -> int:
+    dir_updates: dict[str, int] = {}
+    skipped_dirs = [0]
+    total = 0
+    for entry in iter_files(root, dir_state, dir_updates, incremental, skipped_dirs):
+        p = Path(entry.path)
+        ext = p.suffix.lower()
+        if not all_files and ext not in wanted_exts:
+            continue
+        total += 1
+    return total
+
+
 def ensure_dir(p: Path) -> None:
     p.mkdir(parents=True, exist_ok=True)
 
@@ -269,6 +370,8 @@ def parse_ableton_doc(text: str) -> dict:
     tracks_midi = len(RE_TRACK_MIDI.findall(text))
     tracks_return = len(RE_TRACK_RETURN.findall(text))
     tracks_master = len(RE_TRACK_MASTER.findall(text))
+    tracks_group = len(RE_TRACK_GROUP.findall(text))
+    tracks_fold = len(RE_TRACK_FOLD.findall(text))
 
     clips_audio = len(RE_CLIP_AUDIO.findall(text))
     clips_midi = len(RE_CLIP_MIDI.findall(text))
@@ -301,13 +404,20 @@ def parse_ableton_doc(text: str) -> dict:
         except ValueError:
             tempo = None
 
+    track_total = tracks_audio + tracks_midi + tracks_return + tracks_master + tracks_group + tracks_fold
+    if track_total == 0:
+        # Fallback for alternate schemas to avoid false zeros.
+        track_total = len(RE_TRACK_GENERIC.findall(text))
+
     return {
         "tracks": {
             "audio": tracks_audio,
             "midi": tracks_midi,
             "return": tracks_return,
             "master": tracks_master,
-            "total": tracks_audio + tracks_midi + tracks_return + tracks_master,
+            "group": tracks_group,
+            "folded_group": tracks_fold,
+            "total": track_total,
         },
         "clips": {
             "audio": clips_audio,
@@ -318,6 +428,134 @@ def parse_ableton_doc(text: str) -> dict:
         "device_hints": devices,
         "device_sequence": device_sequence,
         "tempo": tempo,
+    }
+
+
+def _local_tag(tag: str) -> str:
+    if "}" in tag:
+        tag = tag.split("}", 1)[1]
+    if ":" in tag:
+        tag = tag.split(":", 1)[1]
+    return tag
+
+
+def _extract_name(elem: ET.Element) -> str:
+    for key in ("Name", "DisplayName", "ShortName", "DeviceName", "PluginName", "Value"):
+        if key in elem.attrib and elem.attrib[key]:
+            return elem.attrib[key]
+    for child in elem:
+        local = _local_tag(child.tag)
+        if local in {"Name", "DisplayName", "ShortName"}:
+            if "Value" in child.attrib and child.attrib["Value"]:
+                return child.attrib["Value"]
+            if child.text:
+                return child.text.strip()
+        if "Name" in child.attrib and child.attrib["Name"]:
+            return child.attrib["Name"]
+    return ""
+
+
+def _extract_numeric_attr(elem: ET.Element, keys: tuple[str, ...]) -> Optional[float]:
+    for key in keys:
+        if key in elem.attrib:
+            try:
+                return float(elem.attrib[key])
+            except ValueError:
+                return None
+    return None
+
+
+def _collect_meta(elem: ET.Element, keys: set[str]) -> dict[str, str]:
+    meta: dict[str, str] = {}
+    for key, val in elem.attrib.items():
+        if key in keys and val:
+            meta[key] = str(val)
+    for child in elem.iter():
+        local = _local_tag(child.tag)
+        if local not in keys:
+            continue
+        if "Value" in child.attrib and child.attrib["Value"]:
+            meta[local] = str(child.attrib["Value"])
+        elif "Name" in child.attrib and child.attrib["Name"]:
+            meta[local] = str(child.attrib["Name"])
+        elif child.text and child.text.strip():
+            meta[local] = child.text.strip()
+    return meta
+
+
+def parse_ableton_xml(text: str) -> dict:
+    tracks: list[dict] = []
+    clips: list[dict] = []
+    devices: list[dict] = []
+    routings: list[dict] = []
+    root = ET.fromstring(text)
+    track_idx = 0
+    clip_idx = 0
+    device_idx = 0
+    for elem in root.iter():
+        local = _local_tag(elem.tag)
+        if local in TRACK_TAGS:
+            name = _extract_name(elem)
+            track_type = local.replace("Track", "").lower() or "track"
+            track_meta = _collect_meta(elem, TRACK_META_KEYS)
+            tracks.append(
+                {
+                    "index": track_idx,
+                    "type": track_type,
+                    "name": name,
+                    "is_group": local in {"GroupTrack", "FoldedGroupTrack"},
+                    "is_folded": local == "FoldedGroupTrack",
+                    "meta": track_meta,
+                }
+            )
+            for child in elem.iter():
+                child_local = _local_tag(child.tag)
+                if child_local in CLIP_TAGS:
+                    clip_name = _extract_name(child)
+                    clip_type = child_local.replace("Clip", "").lower()
+                    length = _extract_numeric_attr(child, ("Length", "LoopEnd", "End"))
+                    clip_meta = _collect_meta(child, CLIP_META_KEYS)
+                    clips.append(
+                        {
+                            "index": clip_idx,
+                            "track_index": track_idx,
+                            "type": clip_type,
+                            "name": clip_name,
+                            "length": length,
+                            "meta": clip_meta,
+                        }
+                    )
+                    clip_idx += 1
+                if child_local.endswith("Device") and child_local not in TRACK_TAGS:
+                    device_name = _extract_name(child)
+                    device_meta = _collect_meta(child, DEVICE_META_KEYS)
+                    devices.append(
+                        {
+                            "index": device_idx,
+                            "track_index": track_idx,
+                            "type": child_local,
+                            "name": device_name,
+                            "meta": device_meta,
+                        }
+                    )
+                    device_idx += 1
+                if child_local in {"InputRouting", "OutputRouting"}:
+                    value = child.attrib.get("Value") or child.text or ""
+                    routing_meta = _collect_meta(child, ROUTING_META_KEYS)
+                    routings.append(
+                        {
+                            "track_index": track_idx,
+                            "direction": "input" if child_local == "InputRouting" else "output",
+                            "value": value.strip(),
+                            "meta": routing_meta,
+                        }
+                    )
+            track_idx += 1
+    return {
+        "tracks": tracks,
+        "clips": clips,
+        "devices": devices,
+        "routings": routings,
     }
 
 
@@ -368,6 +606,11 @@ def main(argv: list[str]) -> int:
         help="Limit scanning to known Ableton and media extensions.",
     )
     ap.add_argument(
+        "--progress",
+        action="store_true",
+        help="Emit progress lines with total file counts.",
+    )
+    ap.add_argument(
         "--include-media",
         action="store_true",
         help="Also index media files (wav/aif/flac/mp3/etc.)",
@@ -413,6 +656,7 @@ def main(argv: list[str]) -> int:
     suffix = "" if scope == "live_recordings" else f"_{scope}"
     file_index_path = out_dir / f"file_index{suffix}.jsonl"
     docs_path = out_dir / f"ableton_docs{suffix}.jsonl"
+    struct_path = out_dir / f"ableton_struct{suffix}.jsonl"
     refs_path = out_dir / f"refs_graph{suffix}.jsonl"
     state_path = out_dir / f"scan_state{suffix}.json"
     dir_state_path = out_dir / f"dir_state{suffix}.json"
@@ -436,8 +680,14 @@ def main(argv: list[str]) -> int:
     by_ext: Counter[str] = Counter()
     top_dirs: Counter[str] = Counter()
     ableton_sets = 0
+    ableton_artifacts = 0
     refs_total = 0
     refs_missing = 0
+
+    total_files = None
+    if args.progress:
+        total_files = count_files(root, dir_state, args.incremental, all_files, wanted_exts)
+        print(f"[progress] total={total_files}")
 
     for entry in iter_files(root, dir_state, dir_updates, args.incremental, skipped_dirs):
         scanned += 1
@@ -530,6 +780,8 @@ def main(argv: list[str]) -> int:
         by_ext[ext] += 1
         if ext in ABLETON_DOC_EXTS:
             ableton_sets += 1
+        elif ext in ABLETON_ARTIFACT_EXTS:
+            ableton_artifacts += 1
 
         rel_to_root = _safe_rel(root, p)
         parts = rel_to_root.split("/")
@@ -546,20 +798,41 @@ def main(argv: list[str]) -> int:
         if args.hash and "sha1" in rec:
             state[rel]["sha1"] = rec["sha1"]
 
-        # Parse Ableton docs (.als/.alc)
-        if ext in ABLETON_DOC_EXTS:
+        # Parse Ableton docs and artifacts (.als/.alc/.adg/.adv/.agr/.alp)
+        if ext in (ABLETON_DOC_EXTS | ABLETON_ARTIFACT_EXTS):
             try:
                 text = read_text_maybe_gzip(p)
                 summary = parse_ableton_doc(text)
+                struct_payload = {}
+                struct_error = None
+                try:
+                    struct_payload = parse_ableton_xml(text)
+                except Exception as exc:
+                    struct_error = str(exc)
 
                 doc = {
                     "path": rel,
                     "ext": ext,
-                    "kind": "ableton_doc",
+                    "kind": "ableton_doc" if ext in ABLETON_DOC_EXTS else "ableton_artifact",
                     "scanned_at": started,
                     "summary": summary,
                 }
                 write_jsonl(docs_path, doc)
+                write_jsonl(
+                    struct_path,
+                    {
+                        "path": rel,
+                        "ext": ext,
+                        "kind": "ableton_doc" if ext in ABLETON_DOC_EXTS else "ableton_artifact",
+                        "scanned_at": started,
+                        "parse_method": "xml" if not struct_error else "xml_error",
+                        "error": struct_error,
+                        "tracks": struct_payload.get("tracks", []),
+                        "clips": struct_payload.get("clips", []),
+                        "devices": struct_payload.get("devices", []),
+                        "routings": struct_payload.get("routings", []),
+                    },
+                )
                 parsed_docs += 1
 
                 # Emit reference edges
@@ -596,9 +869,24 @@ def main(argv: list[str]) -> int:
                     {
                         "path": rel,
                         "ext": ext,
-                        "kind": "ableton_doc",
+                        "kind": "ableton_doc" if ext in ABLETON_DOC_EXTS else "ableton_artifact",
                         "scanned_at": started,
                         "error": str(e),
+                    },
+                )
+                write_jsonl(
+                    struct_path,
+                    {
+                        "path": rel,
+                        "ext": ext,
+                        "kind": "ableton_doc" if ext in ABLETON_DOC_EXTS else "ableton_artifact",
+                        "scanned_at": started,
+                        "parse_method": "xml_error",
+                        "error": str(e),
+                        "tracks": [],
+                        "clips": [],
+                        "devices": [],
+                        "routings": [],
                     },
                 )
 
@@ -606,6 +894,10 @@ def main(argv: list[str]) -> int:
             print(
                 f"[scan] scanned={scanned} indexed={indexed} parsed_docs={parsed_docs} skipped={skipped}"
             )
+        if args.progress and total_files:
+            if scanned % 250 == 0 or scanned == total_files:
+                percent = (scanned / total_files) * 100.0
+                print(f"[progress] scanned={scanned} total={total_files} percent={percent:.1f}")
 
     save_state(state_path, state)
     if dir_updates:
@@ -627,6 +919,8 @@ def main(argv: list[str]) -> int:
             skipped=skipped,
             by_ext=by_ext,
             ableton_sets=ableton_sets,
+            ableton_artifacts=ableton_artifacts,
+            total_files=total_files,
             refs_total=refs_total,
             refs_missing=refs_missing,
             top_dirs=top_dirs,
