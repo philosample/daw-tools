@@ -120,6 +120,8 @@ class HoverTooltip:
             borderwidth=1,
             padx=6,
             pady=4,
+            justify="left",
+            wraplength=420,
         )
         label.pack()
         x = self.widget.winfo_rootx() + 12
@@ -796,6 +798,8 @@ class CatalogPanel(tk.Frame):
                 fg=TEXT,
                 bg=PANEL,
                 anchor="w",
+                justify="left",
+                wraplength=260,
             )
             row = len(self.detail_rows)
             label.grid(row=row, column=0, sticky="e", padx=(0, 6), pady=2)
@@ -2763,6 +2767,8 @@ class PreferencesPanel(tk.Frame):
                 fg=TEXT,
                 bg=PANEL,
                 anchor="w",
+                justify="left",
+                wraplength=260,
             )
             row = len(self.detail_rows)
             label.grid(row=row, column=0, sticky="e", padx=(0, 6), pady=2)
