@@ -96,6 +96,49 @@ def set_detail_fields(
             value.configure(text="")
 
 
+class HoverTooltip:
+    def __init__(self, widget: tk.Widget, text: str) -> None:
+        self.widget = widget
+        self.text = text
+        self._tip: tk.Toplevel | None = None
+        self.widget.bind("<Enter>", self._show, add="+")
+        self.widget.bind("<Leave>", self._hide, add="+")
+
+    def _show(self, _event: object) -> None:
+        if self._tip is not None:
+            return
+        tip = tk.Toplevel(self.widget)
+        tip.overrideredirect(True)
+        tip.configure(bg=BG_NAV)
+        label = tk.Label(
+            tip,
+            text=self.text,
+            bg=BG_NAV,
+            fg=TEXT,
+            font=MONO_FONT,
+            relief="solid",
+            borderwidth=1,
+            padx=6,
+            pady=4,
+        )
+        label.pack()
+        x = self.widget.winfo_rootx() + 12
+        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 6
+        tip.geometry(f"+{x}+{y}")
+        self._tip = tip
+
+    def _hide(self, _event: object | None = None) -> None:
+        if self._tip is None:
+            return
+        self._tip.destroy()
+        self._tip = None
+
+    def detach(self) -> None:
+        self.widget.unbind("<Enter>")
+        self.widget.unbind("<Leave>")
+        self._hide()
+
+
 _TIMESTAMP_BRACKET_RE = re.compile(r"\[[0-9][0-9  T:_-]{4,}[0-9]\]")
 
 
@@ -1106,6 +1149,7 @@ class CatalogPanel(tk.Frame):
             return 0.0
 
     def _set_detail_message(self, message: str) -> None:
+        self._reset_detail_row_interactions()
         set_detail_fields(self.detail_rows, [("Info", message)])
 
     def _render_pref_summary(self) -> None:
@@ -1125,6 +1169,30 @@ class CatalogPanel(tk.Frame):
         for row in self._last_rows[:12]:
             self.pref_summary.insert("end", f"- {row.get('source', '')}\n")
         self.pref_summary.configure(state="disabled")
+
+    def _reset_detail_row_interactions(self) -> None:
+        for _, value in self.detail_rows:
+            value.configure(fg=TEXT, cursor="")
+            value.unbind("<Button-1>")
+            tooltip = getattr(value, "_hover_tooltip", None)
+            if tooltip:
+                tooltip.detach()
+                delattr(value, "_hover_tooltip")
+
+    def _open_in_finder(self, path: str) -> None:
+        try:
+            self.app.tk.call("exec", "open", path)
+        except Exception:
+            messagebox.showwarning("Open Path", path)
+
+    def _apply_path_link(self, row_index: int, path: str) -> None:
+        if not path or row_index >= len(self.detail_rows):
+            return
+        _, value = self.detail_rows[row_index]
+        value.configure(text="Open in Finder", fg=ACCENT, cursor="hand2")
+        value.bind("<Button-1>", lambda _event: self._open_in_finder(path))
+        tooltip = HoverTooltip(value, path)
+        setattr(value, "_hover_tooltip", tooltip)
 
     def refresh(self) -> None:
         if self.app.current_scope and self.scope_var.get() != "all":
@@ -1298,6 +1366,7 @@ class CatalogPanel(tk.Frame):
         values = self.tree.item(selection[0], "values")
         if not values:
             return
+        self._reset_detail_row_interactions()
         values_map = {col: values[idx] for idx, col in enumerate(self.visible_columns)}
         scope = values_map.get("scope", "live_recordings")
         path = values_map.get("path_full") or values_map.get("source") or values_map.get("name")
@@ -1367,12 +1436,14 @@ class CatalogPanel(tk.Frame):
 
         if not doc and scope == "user_library":
             fields = [
-                ("Path", truncate_path(path, 80)),
+                ("Name", Path(path).stem),
+                ("Path", ""),
                 ("Type", values_map.get("ext", "")),
                 ("Size", values_map.get("size", "")),
                 ("Modified", values_map.get("mtime", "")),
             ]
             set_detail_fields(self.detail_rows, fields)
+            self._apply_path_link(1, path)
             return
 
         if not doc:
@@ -1388,7 +1459,8 @@ class CatalogPanel(tk.Frame):
             audio_channels = file_row["audio_channels"] or ""
 
         fields = [
-            ("Path", truncate_path(doc["path"], 80)),
+            ("Name", Path(doc["path"]).stem),
+            ("Path", ""),
             ("Ext", file_row["ext"] if file_row else ""),
             ("Size", self._format_bytes(file_row["size"]) if file_row else ""),
             ("Modified", format_mtime(file_row["mtime"]) if file_row else ""),
@@ -1402,6 +1474,7 @@ class CatalogPanel(tk.Frame):
             ("Audio rate", str(audio_rate)),
         ]
         set_detail_fields(self.detail_rows, fields)
+        self._apply_path_link(1, doc["path"])
 
 
 class ScanPanel(ttk.LabelFrame):
