@@ -379,7 +379,7 @@ class DashboardPanel(tk.Frame):
         text.configure(state="disabled")
         return text
 
-    def _make_stat_card(self, master: tk.Frame, title: str, col: int) -> tk.Label:
+    def _make_stat_card(self, master: tk.Frame, title: str, col: int) -> tuple[tk.Label, tk.Label]:
         card = tk.Frame(master, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
         card.grid(row=0, column=col, sticky="nsew", padx=6, pady=6)
 
@@ -387,8 +387,10 @@ class DashboardPanel(tk.Frame):
             anchor="w", padx=12, pady=(10, 0)
         )
         value = tk.Label(card, text="-", font=("Menlo", 20, "bold"), fg=TEXT, bg=PANEL)
-        value.pack(anchor="w", padx=12, pady=(4, 12))
-        return value
+        value.pack(anchor="w", padx=12, pady=(4, 2))
+        sub = tk.Label(card, text="", font=BODY_FONT, fg=MUTED, bg=PANEL)
+        sub.pack(anchor="w", padx=12, pady=(0, 10))
+        return value, sub
 
     def _current_scope(self) -> str:
         scope = self.app.current_scope or "live_recordings"
@@ -431,10 +433,14 @@ class DashboardPanel(tk.Frame):
         scope = self._current_scope()
         self.scope_label.configure(text=f"Scope: {scope}")
         focus = self.app.load_dashboard_focus(scope)
-        self._card_sets.configure(text=str(focus.get("set_count_total", 0)))
-        self._card_set_size.configure(text=format_bytes(focus.get("set_bytes", 0)))
-        self._card_audio_size.configure(text=format_bytes(focus.get("audio_bytes", 0)))
-        self._card_missing_sets.configure(text=str(focus.get("missing_sets", 0)))
+        total_sets = int(focus.get("set_count_total", 0))
+        non_backup_sets = int(focus.get("set_count_non_backup", 0))
+        backup_sets = max(0, total_sets - non_backup_sets)
+        self._card_sets[0].configure(text=str(total_sets))
+        self._card_sets[1].configure(text=f"Non-backup: {non_backup_sets}  Backup: {backup_sets}")
+        self._card_set_size[0].configure(text=format_bytes(focus.get("set_bytes", 0)))
+        self._card_audio_size[0].configure(text=format_bytes(focus.get("audio_bytes", 0)))
+        self._card_missing_sets[0].configure(text=str(focus.get("missing_sets", 0)))
 
         summary_path = self.app.resolve_scan_summary()
         summary = _safe_read_json(summary_path) if summary_path else {}
