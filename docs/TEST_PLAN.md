@@ -56,6 +56,7 @@
   - Python functions/classes via AST + diff line ranges.
   - SQL strings from literals, simple concatenation, and f-strings in Python.
   - Schema files in `schemas/*.schema.json`.
+  - Non-test-item files are ignored by the detector to avoid false positives.
 - Known gaps (add when they become common):
   - Queries or schemas stored outside Python (e.g., external `.sql` files).
   - Config/CLI changes that alter runtime behavior without touching core modules.
