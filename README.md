@@ -65,6 +65,7 @@ A consolidated SQLite DB is written to:
 - **Tools**: Utilities (e.g. RAMify).
 - **Prefs**: Parsed preferences + summary.
 - **Settings**: App configuration and future utilities.
+  - **Dash** now includes backup + catalog cleanup actions.
 
 ## Core Commands
 ```bash
@@ -106,6 +107,9 @@ python abletools_schema_validate.py ./.abletools_catalog
 
 # Incremental schema validation (new JSONL only)
 python abletools_schema_validate.py ./.abletools_catalog --incremental
+
+# Clean catalog bloat via UI (Dashboard -> Clean Catalog)
+# Optional: rebuild DB after cleanup from remaining JSONL
 
 # Targeted tests (detect changes and run matching tests)
 ./scripts/ci_run_targeted.sh

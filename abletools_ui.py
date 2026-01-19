@@ -5,7 +5,6 @@ import json
 import logging
 import queue
 import random
-import shutil
 import re
 import sqlite3
 import subprocess
@@ -22,6 +21,7 @@ import tkinter as tk
 import tkinter.font as tkfont
 from tkinter import filedialog, messagebox, ttk
 
+from abletools_catalog_ops import backup_files, cleanup_catalog_dir
 from abletools_prefs import get_key_paths, get_preferences_folder, get_scan_root, set_scan_root, suggest_scan_root
 from ramify_core import iter_targets, process_file
 
@@ -495,18 +495,37 @@ class DashboardPanel(tk.Frame):
             "struct": _opt("Struct/clip/routing JSONL", False),
             "scan_state": _opt("Scan + dir state (incremental cache)", False),
         }
+        optimize_var = _opt("Optimize DB after cleanup (ANALYZE + VACUUM)", True)
+        rebuild_var = _opt("Rebuild DB from remaining JSONL (overwrite)", False)
 
         footer = tk.Frame(dialog, bg=BG)
         footer.pack(fill="x", padx=16, pady=(0, 16))
 
         def _run() -> None:
             selected = {k: v.get() for k, v in opts.items()}
-            removed, bytes_freed = self.app.cleanup_catalog(selected)
-            messagebox.showinfo(
-                "Clean Catalog",
-                f"Removed {removed} files, freed {format_bytes(bytes_freed)}.",
-            )
-            dialog.destroy()
+            do_optimize = optimize_var.get()
+            do_rebuild = rebuild_var.get()
+
+            def worker() -> None:
+                removed, bytes_freed = self.app.cleanup_catalog(selected)
+                maintenance_msg = ""
+                if do_rebuild:
+                    ok, msg = self.app.rebuild_catalog_db()
+                    maintenance_msg = " Rebuilt DB." if ok else f" Rebuild failed: {msg}"
+                elif do_optimize:
+                    ok, msg = self.app.optimize_catalog_db()
+                    maintenance_msg = " Optimized DB." if ok else f" Optimize failed: {msg}"
+                self.after(
+                    0,
+                    lambda: messagebox.showinfo(
+                        "Clean Catalog",
+                        f"Removed {removed} files, freed {format_bytes(bytes_freed)}.{maintenance_msg}",
+                    ),
+                )
+                self.after(0, dialog.destroy)
+                self.after(0, self.refresh)
+
+            threading.Thread(target=worker, daemon=True).start()
 
         def _cancel() -> None:
             dialog.destroy()
@@ -527,7 +546,7 @@ class DashboardPanel(tk.Frame):
         if not dest:
             return
         try:
-            copied, skipped = self.app.backup_catalog_files(
+            copied, skipped, archive_path = self.app.backup_catalog_files(
                 scope, kind, Path(dest)
             )
         except Exception as exc:
@@ -535,9 +554,12 @@ class DashboardPanel(tk.Frame):
             return
         label = "sets" if kind == "sets" else "audio files"
         if copied > 0:
+            archive_note = ""
+            if archive_path:
+                archive_note = f" Archive: {archive_path.name}"
             messagebox.showinfo(
                 "Backup",
-                f"Backed up {copied} {label} and created a zip archive. "
+                f"Backed up {copied} {label} and created a zip archive.{archive_note} "
                 f"Skipped {skipped} existing files.",
             )
         else:
@@ -3528,7 +3550,9 @@ class AbletoolsUI(tk.Tk):
             return result
         return result
 
-    def backup_catalog_files(self, scope: str, kind: str, dest_dir: Path) -> tuple[int, int]:
+    def backup_catalog_files(
+        self, scope: str, kind: str, dest_dir: Path
+    ) -> tuple[int, int, Optional[Path]]:
         db_path = self.resolve_catalog_db_path()
         if not db_path or not db_path.exists():
             return 0, 0
@@ -3539,8 +3563,6 @@ class AbletoolsUI(tk.Tk):
             where = "kind = 'media'"
         else:
             where = "ext IN ('.als', '.alc')"
-        copied = 0
-        skipped = 0
         active_root = self.active_root
         try:
             with sqlite3.connect(db_path) as conn:
@@ -3550,92 +3572,44 @@ class AbletoolsUI(tk.Tk):
                 ).fetchall()
         except Exception:
             return 0, 0
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        base_dir = dest_dir / "Abletools Backup" / f"{kind}_{timestamp}"
-        base_dir.mkdir(parents=True, exist_ok=True)
-        for (path_str,) in rows:
-            path = Path(path_str)
-            if not path.exists():
-                skipped += 1
-                continue
-            if active_root:
-                try:
-                    rel = path.relative_to(active_root)
-                except ValueError:
-                    rel = Path(path.name)
-            else:
-                rel = Path(path.name)
-            target = base_dir / rel
-            if target.exists():
-                skipped += 1
-                continue
-            target.parent.mkdir(parents=True, exist_ok=True)
-            try:
-                shutil.copy2(path, target)
-                copied += 1
-            except Exception:
-                skipped += 1
-        if copied > 0:
-            try:
-                shutil.make_archive(str(base_dir), "zip", root_dir=base_dir)
-            except Exception:
-                pass
-        return copied, skipped
+        paths = [Path(path_str) for (path_str,) in rows]
+        copied, skipped, archive_path = backup_files(paths, dest_dir, active_root, kind)
+        return copied, skipped, archive_path
 
     def cleanup_catalog(self, options: dict[str, bool]) -> tuple[int, int]:
+        return cleanup_catalog_dir(self.catalog_dir(), options)
+
+    def optimize_catalog_db(self) -> tuple[bool, str]:
+        db_path = self.resolve_catalog_db_path()
+        if not db_path or not db_path.exists():
+            return False, "No database found."
+        script = self.abletools_dir / "abletools_maintenance.py"
+        if not script.exists():
+            return False, "Maintenance script missing."
+        proc = subprocess.run(
+            [sys.executable, str(script), str(db_path), "--analyze", "--optimize", "--vacuum"],
+            cwd=str(self.abletools_dir),
+            capture_output=True,
+            text=True,
+        )
+        if proc.returncode != 0:
+            return False, proc.stderr.strip() or "Maintenance failed."
+        return True, ""
+
+    def rebuild_catalog_db(self) -> tuple[bool, str]:
+        script = self.abletools_dir / "abletools_catalog_db.py"
+        if not script.exists():
+            return False, "Catalog DB script missing."
         catalog_dir = self.catalog_dir()
-        if not catalog_dir.exists():
-            return 0, 0
-        removed = 0
-        bytes_freed = 0
-
-        def _remove(path: Path) -> None:
-            nonlocal removed, bytes_freed
-            try:
-                bytes_freed += path.stat().st_size
-            except OSError:
-                pass
-            try:
-                path.unlink()
-                removed += 1
-            except OSError:
-                pass
-
-        if options.get("logs"):
-            for path in catalog_dir.glob("scan_log_*.txt"):
-                _remove(path)
-            for path in catalog_dir.glob("scan_log_targeted_*.txt"):
-                _remove(path)
-            for path in catalog_dir.glob("missing_refs_audit_*.txt"):
-                _remove(path)
-
-        if options.get("xml_nodes"):
-            for path in catalog_dir.glob("ableton_xml_nodes*.jsonl"):
-                _remove(path)
-
-        if options.get("device_params"):
-            for path in catalog_dir.glob("ableton_device_params*.jsonl"):
-                _remove(path)
-
-        if options.get("refs_graph"):
-            for path in catalog_dir.glob("refs_graph*.jsonl"):
-                _remove(path)
-
-        if options.get("struct"):
-            for pattern in (
-                "ableton_struct*.jsonl",
-                "ableton_clip_details*.jsonl",
-                "ableton_routing_details*.jsonl",
-            ):
-                for path in catalog_dir.glob(pattern):
-                    _remove(path)
-
-        if options.get("scan_state"):
-            for pattern in ("scan_state*.json", "dir_state*.json", "scan_checkpoint*.json"):
-                for path in catalog_dir.glob(pattern):
-                    _remove(path)
-
-        return removed, bytes_freed
+        proc = subprocess.run(
+            [sys.executable, str(script), str(catalog_dir), "--overwrite", "--vacuum"],
+            cwd=str(self.abletools_dir),
+            capture_output=True,
+            text=True,
+        )
+        if proc.returncode != 0:
+            return False, proc.stderr.strip() or "Rebuild failed."
+        return True, ""
 
     def _open_db_location(self) -> None:
         db_path = self.resolve_catalog_db_path()
