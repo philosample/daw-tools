@@ -1417,7 +1417,6 @@ class ScanPanel(ttk.LabelFrame):
         self.rehash_var = tk.BooleanVar(value=False)
         self.hash_docs_var = tk.BooleanVar(value=False)
         self.scope_var = tk.StringVar(value="live_recordings")
-        self.all_files_var = tk.BooleanVar(value=True)
         self.analyze_audio_var = tk.BooleanVar(value=False)
         self.changed_only_var = tk.BooleanVar(value=False)
         self.checkpoint_var = tk.BooleanVar(value=True)
@@ -1499,14 +1498,9 @@ class ScanPanel(ttk.LabelFrame):
         ).grid(row=1, column=3, sticky="w", padx=(14, 0))
         ttk.Checkbutton(
             full_frame,
-            text="All files",
-            variable=self.all_files_var,
-        ).grid(row=1, column=4, sticky="w", padx=(14, 0))
-        ttk.Checkbutton(
-            full_frame,
             text="Analyze audio",
             variable=self.analyze_audio_var,
-        ).grid(row=1, column=5, sticky="w", padx=(14, 0))
+        ).grid(row=1, column=4, sticky="w", padx=(14, 0))
 
         ttk.Checkbutton(
             full_frame,
@@ -2172,8 +2166,6 @@ class ScanPanel(ttk.LabelFrame):
                     cmd.append("--rehash-all")
             if self.hash_docs_var.get():
                 cmd.append("--hash-docs-only")
-            if not self.all_files_var.get():
-                cmd.append("--only-known")
             cmd.append("--progress")
             if self.xml_nodes_var.get():
                 cmd.append("--xml-nodes")
@@ -2249,7 +2241,6 @@ class ScanPanel(ttk.LabelFrame):
                 "--out",
                 str(self.app.catalog_dir()),
                 "--incremental",
-                "--only-known",
                 "--progress",
                 "--verbose",
             ]
@@ -3681,7 +3672,6 @@ class AbletoolsUI(tk.Tk):
             "--out",
             str(self.catalog_dir()),
             "--incremental",
-            "--only-known",
             "--progress",
             "--verbose",
         ]

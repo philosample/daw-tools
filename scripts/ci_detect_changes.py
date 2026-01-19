@@ -137,34 +137,59 @@ def extract_sql_strings(text: str) -> list[tuple[str, int]]:
         tree = ast.parse(text)
     except SyntaxError:
         return results
-    for node in ast.walk(tree):
+
+    def is_sql_snippet(value: str) -> bool:
+        upper = value.upper()
+        if "SELECT" in upper and "FROM" in upper:
+            return True
+        if "INSERT" in upper and "INTO" in upper:
+            return True
+        if "UPDATE" in upper and "SET" in upper:
+            return True
+        if "DELETE" in upper and "FROM" in upper:
+            return True
+        if upper.lstrip().startswith("WITH ") and "SELECT" in upper:
+            return True
+        return False
+
+    def extract_string(node: ast.AST) -> str | None:
         if isinstance(node, ast.Constant) and isinstance(node.value, str):
-            value = node.value.strip()
-            if SQL_RE.search(value):
-                line = getattr(node, "lineno", 1)
-                cleaned = SQL_STRIP_RE.sub(" ", value)
-                results.append((cleaned[:80], line))
-        elif isinstance(node, ast.JoinedStr):
+            return node.value
+        if isinstance(node, ast.JoinedStr):
             parts = []
             for part in node.values:
                 if isinstance(part, ast.Constant) and isinstance(part.value, str):
                     parts.append(part.value)
                 else:
                     parts.append("{}")
-            value = "".join(parts).strip()
-            if SQL_RE.search(value):
-                line = getattr(node, "lineno", 1)
-                cleaned = SQL_STRIP_RE.sub(" ", value)
-                results.append((cleaned[:80], line))
-        elif isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
-            left = node.left
-            right = node.right
-            if isinstance(left, ast.Constant) and isinstance(left.value, str) and isinstance(right, ast.Constant) and isinstance(right.value, str):
-                value = (left.value + right.value).strip()
-                if SQL_RE.search(value):
-                    line = getattr(node, "lineno", 1)
-                    cleaned = SQL_STRIP_RE.sub(" ", value)
-                    results.append((cleaned[:80], line))
+            return "".join(parts)
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+            left = extract_string(node.left)
+            right = extract_string(node.right)
+            if left is not None and right is not None:
+                return left + right
+        return None
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func_name = None
+        if isinstance(node.func, ast.Attribute):
+            func_name = node.func.attr
+        elif isinstance(node.func, ast.Name):
+            func_name = node.func.id
+        if func_name not in {"execute", "executemany", "executescript"}:
+            continue
+        if not node.args:
+            continue
+        value = extract_string(node.args[0])
+        if not value:
+            continue
+        value = value.strip()
+        if SQL_RE.search(value) and is_sql_snippet(value):
+            line = getattr(node, "lineno", 1)
+            cleaned = SQL_STRIP_RE.sub(" ", value)
+            results.append((cleaned[:80], line))
     return results
 
 

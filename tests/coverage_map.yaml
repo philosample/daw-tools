@@ -749,35 +749,35 @@ items:
   - kind: class
     name: ScanView
     file: abletools_ui.py
-    line: 2296
+    line: 2287
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: class
     name: RamifyPanel
     file: abletools_ui.py
-    line: 2323
+    line: 2314
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: class
     name: SettingsPanel
     file: abletools_ui.py
-    line: 2563
+    line: 2554
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: class
     name: PreferencesPanel
     file: abletools_ui.py
-    line: 2615
+    line: 2606
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: class
     name: AbletoolsUI
     file: abletools_ui.py
-    line: 2903
+    line: 2894
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
@@ -1120,609 +1120,609 @@ items:
   - kind: function
     name: _build_ui
     file: abletools_ui.py
-    line: 1443
+    line: 1442
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _toggle_log
     file: abletools_ui.py
-    line: 1700
+    line: 1694
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: set_log_visible
     file: abletools_ui.py
-    line: 1711
+    line: 1705
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _matrix_tick
     file: abletools_ui.py
-    line: 1726
+    line: 1720
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _start_matrix
     file: abletools_ui.py
-    line: 1739
+    line: 1733
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _stop_matrix
     file: abletools_ui.py
-    line: 1744
+    line: 1738
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _browse
     file: abletools_ui.py
-    line: 1756
+    line: 1750
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _open_log
     file: abletools_ui.py
-    line: 1763
+    line: 1757
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _on_scope_change
     file: abletools_ui.py
-    line: 1772
+    line: 1766
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _select_targeted_sets
     file: abletools_ui.py
-    line: 1788
+    line: 1782
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _append_log
     file: abletools_ui.py
-    line: 1941
+    line: 1935
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _handle_progress_line
     file: abletools_ui.py
-    line: 1951
+    line: 1945
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _enqueue
     file: abletools_ui.py
-    line: 1988
+    line: 1982
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _pump_queue
     file: abletools_ui.py
-    line: 1991
+    line: 1985
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _scan_thread
     file: abletools_ui.py
-    line: 2000
+    line: 1994
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _build_db
     file: abletools_ui.py
-    line: 2055
+    line: 2049
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _set_running
     file: abletools_ui.py
-    line: 2115
+    line: 2109
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: start_scan
     file: abletools_ui.py
-    line: 2137
+    line: 2131
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: start_targeted_scan
     file: abletools_ui.py
-    line: 2214
+    line: 2206
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: cancel_scan
     file: abletools_ui.py
-    line: 2286
+    line: 2277
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: __init__
     file: abletools_ui.py
-    line: 2297
+    line: 2288
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _build
     file: abletools_ui.py
-    line: 2302
+    line: 2293
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: __init__
     file: abletools_ui.py
-    line: 2324
+    line: 2315
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _build
     file: abletools_ui.py
-    line: 2332
+    line: 2323
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _log
     file: abletools_ui.py
-    line: 2465
+    line: 2456
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: clear_log
     file: abletools_ui.py
-    line: 2469
+    line: 2460
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: choose_file
     file: abletools_ui.py
-    line: 2472
+    line: 2463
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: choose_folder
     file: abletools_ui.py
-    line: 2480
+    line: 2471
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: run_clicked
     file: abletools_ui.py
-    line: 2485
+    line: 2476
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _finish_run
     file: abletools_ui.py
-    line: 2558
+    line: 2549
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: __init__
     file: abletools_ui.py
-    line: 2564
+    line: 2555
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: __init__
     file: abletools_ui.py
-    line: 2616
+    line: 2607
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _build
     file: abletools_ui.py
-    line: 2624
+    line: 2615
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: refresh
     file: abletools_ui.py
-    line: 2723
+    line: 2714
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _set_payload
     file: abletools_ui.py
-    line: 2756
+    line: 2747
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _set_status
     file: abletools_ui.py
-    line: 2762
+    line: 2753
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _on_select
     file: abletools_ui.py
-    line: 2765
+    line: 2756
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _extract_pref_fields
     file: abletools_ui.py
-    line: 2819
+    line: 2810
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _format_source_entry
     file: abletools_ui.py
-    line: 2848
+    line: 2839
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _summarize_payload
     file: abletools_ui.py
-    line: 2851
+    line: 2842
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _looks_like_path
     file: abletools_ui.py
-    line: 2893
+    line: 2884
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: __init__
     file: abletools_ui.py
-    line: 2904
+    line: 2895
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _style
     file: abletools_ui.py
-    line: 2929
+    line: 2920
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _build
     file: abletools_ui.py
-    line: 3016
+    line: 3007
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _build_nav
     file: abletools_ui.py
-    line: 3049
+    line: 3040
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _build_topbar
     file: abletools_ui.py
-    line: 3084
+    line: 3075
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _set_app_icon
     file: abletools_ui.py
-    line: 3115
+    line: 3106
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _load_logo
     file: abletools_ui.py
-    line: 3131
+    line: 3122
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _load_nav_logo
     file: abletools_ui.py
-    line: 3170
+    line: 3161
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: show_view
     file: abletools_ui.py
-    line: 3190
+    line: 3181
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: refresh_dashboard
     file: abletools_ui.py
-    line: 3221
+    line: 3212
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: scan_script_path
     file: abletools_ui.py
-    line: 3226
+    line: 3217
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: catalog_dir
     file: abletools_ui.py
-    line: 3229
+    line: 3220
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: default_scan_root
     file: abletools_ui.py
-    line: 3232
+    line: 3223
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: user_library_root
     file: abletools_ui.py
-    line: 3242
+    line: 3233
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: preferences_root
     file: abletools_ui.py
-    line: 3252
+    line: 3243
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: set_active_root
     file: abletools_ui.py
-    line: 3256
+    line: 3247
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: set_current_scope
     file: abletools_ui.py
-    line: 3264
+    line: 3255
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: resolve_db_path
     file: abletools_ui.py
-    line: 3268
+    line: 3259
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: resolve_catalog_db_path
     file: abletools_ui.py
-    line: 3273
+    line: 3264
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: resolve_prefs_db_path
     file: abletools_ui.py
-    line: 3276
+    line: 3267
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: resolve_scan_summary
     file: abletools_ui.py
-    line: 3279
+    line: 3270
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: load_catalog_stats
     file: abletools_ui.py
-    line: 3285
+    line: 3276
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: load_top_devices
     file: abletools_ui.py
-    line: 3320
+    line: 3311
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: load_top_plugins
     file: abletools_ui.py
-    line: 3345
+    line: 3336
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: load_top_chains
     file: abletools_ui.py
-    line: 3369
+    line: 3360
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: load_missing_refs_paths
     file: abletools_ui.py
-    line: 3385
+    line: 3376
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: load_dashboard_focus
     file: abletools_ui.py
-    line: 3401
+    line: 3392
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: backup_catalog_files
     file: abletools_ui.py
-    line: 3461
+    line: 3452
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: cleanup_catalog
     file: abletools_ui.py
-    line: 3515
+    line: 3506
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _open_db_location
     file: abletools_ui.py
-    line: 3570
+    line: 3561
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: refresh_catalog_db
     file: abletools_ui.py
-    line: 3581
+    line: 3572
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _refresh_catalog_db_worker
     file: abletools_ui.py
-    line: 3587
+    line: 3578
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: run_analytics
     file: abletools_ui.py
-    line: 3622
+    line: 3613
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: run_targeted_scan
     file: abletools_ui.py
-    line: 3666
+    line: 3657
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: get_known_sets
     file: abletools_ui.py
-    line: 3716
+    line: 3706
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: audit_zero_tracks
     file: abletools_ui.py
-    line: 3750
+    line: 3740
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: audit_missing_refs
     file: abletools_ui.py
-    line: 3792
+    line: 3782
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: run_maintenance
     file: abletools_ui.py
-    line: 3829
+    line: 3819
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _refresh_prefs_cache
     file: abletools_ui.py
-    line: 3858
+    line: 3848
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: ensure_catalog_db
     file: abletools_ui.py
-    line: 3884
+    line: 3874
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _init_active_root
     file: abletools_ui.py
-    line: 3914
+    line: 3904
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: log_ui_error
     file: abletools_ui.py
-    line: 3918
+    line: 3908
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _setup_logging
     file: abletools_ui.py
-    line: 3921
+    line: 3911
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _rotate_log
     file: abletools_ui.py
-    line: 3938
+    line: 3928
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _log_event
     file: abletools_ui.py
-    line: 3967
+    line: 3957
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _scan_app_log
     file: abletools_ui.py
-    line: 3971
+    line: 3961
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
@@ -1771,63 +1771,63 @@ items:
   - kind: function
     name: _apply_filter
     file: abletools_ui.py
-    line: 1875
+    line: 1869
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _sync_ignore_backups
     file: abletools_ui.py
-    line: 1889
+    line: 1883
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _apply
     file: abletools_ui.py
-    line: 1896
+    line: 1890
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _cancel
     file: abletools_ui.py
-    line: 1922
+    line: 1916
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _apply
     file: abletools_ui.py
-    line: 2116
+    line: 2110
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: worker
     file: abletools_ui.py
-    line: 2512
+    line: 2503
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _remove
     file: abletools_ui.py
-    line: 3522
+    line: 3513
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _run
     file: abletools_ui.py
-    line: 3628
+    line: 3619
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _run
     file: abletools_ui.py
-    line: 3689
+    line: 3679
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py

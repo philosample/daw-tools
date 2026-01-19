@@ -39,8 +39,7 @@ EOF
 python3 abletools_scan.py "$ROOT" \
   --scope live_recordings \
   --mode full \
-  --out "$OUT_DEFAULT" \
-  --only-known
+  --out "$OUT_DEFAULT"
 
 python3 abletools_schema_validate.py "$OUT_DEFAULT"
 
@@ -61,7 +60,6 @@ python3 abletools_scan.py "$ROOT" \
   --scope live_recordings \
   --mode full \
   --out "$OUT_INCLUDE" \
-  --only-known \
   --include-backups
 
 python3 abletools_schema_validate.py "$OUT_INCLUDE"

@@ -713,11 +713,6 @@ def main(argv: list[str]) -> int:
         ),
     )
     ap.add_argument(
-        "--only-known",
-        action="store_true",
-        help="Limit scanning to known Ableton and media extensions.",
-    )
-    ap.add_argument(
         "--progress",
         action="store_true",
         help="Emit progress lines with total file counts.",
@@ -851,7 +846,7 @@ def main(argv: list[str]) -> int:
     dir_updates: dict[str, int] = {}
     skipped_dirs = [0]
 
-    all_files = not args.only_known
+    all_files = False
     wanted_exts = set(DEFAULT_INDEX_EXTS)
     if args.include_media:
         wanted_exts |= MEDIA_EXTS

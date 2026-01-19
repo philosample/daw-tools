@@ -21,8 +21,7 @@ python3 abletools_scan.py "$ROOT/Set.als" \
   --scope live_recordings \
   --mode targeted \
   --details struct,clips,devices,routing,refs \
-  --out "$OUT_DIR" \
-  --only-known
+  --out "$OUT_DIR"
 
 python3 abletools_schema_validate.py "$OUT_DIR"
 
