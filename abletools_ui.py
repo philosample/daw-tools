@@ -5,6 +5,7 @@ import json
 import logging
 import queue
 import random
+import shutil
 import re
 import sqlite3
 import subprocess
@@ -56,6 +57,24 @@ def format_mtime(value: object) -> str:
         return datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
     except Exception:
         return ""
+
+
+def format_bytes(value: object) -> str:
+    try:
+        size = int(value)
+    except Exception:
+        return ""
+    if size < 0:
+        return ""
+    units = ["B", "KB", "MB", "GB", "TB"]
+    size_float = float(size)
+    unit_idx = 0
+    while size_float >= 1024.0 and unit_idx < len(units) - 1:
+        size_float /= 1024.0
+        unit_idx += 1
+    if unit_idx == 0:
+        return f"{int(size_float)} {units[unit_idx]}"
+    return f"{size_float:.1f} {units[unit_idx]}"
 
 
 def truncate_path(path: str, max_len: int = 60) -> str:
@@ -261,6 +280,8 @@ class DashboardPanel(tk.Frame):
         tk.Label(header, text="Dashboard", font=TITLE_FONT, fg=TEXT, bg=BG).pack(
             side="left"
         )
+        self.scope_label = tk.Label(header, text="", font=BODY_FONT, fg=MUTED, bg=BG)
+        self.scope_label.pack(side="left", padx=(12, 0))
         tk.Button(
             header,
             text="Refresh",
@@ -276,17 +297,17 @@ class DashboardPanel(tk.Frame):
         cards.pack(fill="x", padx=16)
         cards.columnconfigure((0, 1, 2, 3), weight=1)
 
-        self._card_files = self._make_stat_card(cards, "Files", 0)
-        self._card_docs = self._make_stat_card(cards, "Ableton Docs", 1)
-        self._card_refs = self._make_stat_card(cards, "Refs", 2)
-        self._card_missing = self._make_stat_card(cards, "Missing", 3)
+        self._card_sets = self._make_stat_card(cards, "Non-backup Sets", 0)
+        self._card_set_size = self._make_stat_card(cards, "Set Size", 1)
+        self._card_audio_size = self._make_stat_card(cards, "Audio Size", 2)
+        self._card_missing_sets = self._make_stat_card(cards, "Sets Missing Refs", 3)
 
         activity = tk.Frame(self, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
-        activity.pack(fill="both", expand=True, padx=16, pady=16)
+        activity.pack(fill="x", padx=16, pady=(12, 10))
 
         tk.Label(
             activity,
-            text="Recent Activity",
+            text="Catalog Status",
             font=H2_FONT,
             fg=TEXT,
             bg=PANEL,
@@ -294,7 +315,7 @@ class DashboardPanel(tk.Frame):
 
         self.activity_text = tk.Text(
             activity,
-            height=8,
+            height=4,
             bg=PANEL,
             fg=MUTED,
             insertbackground=TEXT,
@@ -304,14 +325,39 @@ class DashboardPanel(tk.Frame):
         self.activity_text.pack(fill="both", expand=True, padx=12, pady=(0, 12))
         self.activity_text.configure(state="disabled")
 
+        backup = tk.Frame(self, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
+        backup.pack(fill="x", padx=16, pady=(0, 12))
+        tk.Label(
+            backup,
+            text="Backups",
+            font=H2_FONT,
+            fg=TEXT,
+            bg=PANEL,
+        ).pack(anchor="w", padx=12, pady=(10, 4))
+        backup_actions = tk.Frame(backup, bg=PANEL)
+        backup_actions.pack(anchor="w", padx=12, pady=(0, 12))
+        ttk.Button(
+            backup_actions,
+            text="Backup Sets",
+            command=self._backup_sets,
+            style="Ghost.TButton",
+        ).pack(side="left")
+        ttk.Button(
+            backup_actions,
+            text="Backup Audio",
+            command=self._backup_audio,
+            style="Ghost.TButton",
+        ).pack(side="left", padx=(8, 0))
+
         analytics = tk.Frame(self, bg=BG)
         analytics.pack(fill="x", padx=16, pady=(0, 16))
-        analytics.columnconfigure((0, 1, 2), weight=1)
+        analytics.columnconfigure((0, 1, 2, 3), weight=1)
 
         self.top_devices_text = self._make_analytics_box(analytics, "Top Devices", 0)
-        self.top_chains_text = self._make_analytics_box(analytics, "Top FX Chains", 1)
+        self.top_plugins_text = self._make_analytics_box(analytics, "Top Plugins", 1)
+        self.top_chains_text = self._make_analytics_box(analytics, "Top Device Chains", 2)
         self.missing_paths_text = self._make_analytics_box(
-            analytics, "Missing Refs Paths", 2
+            analytics, "Missing Ref Folders", 3
         )
 
     def _make_analytics_box(self, master: tk.Frame, title: str, col: int) -> tk.Text:
@@ -344,12 +390,44 @@ class DashboardPanel(tk.Frame):
         value.pack(anchor="w", padx=12, pady=(4, 12))
         return value
 
+    def _current_scope(self) -> str:
+        scope = self.app.current_scope or "live_recordings"
+        if scope == "all":
+            scope = "live_recordings"
+        return scope
+
+    def _backup_sets(self) -> None:
+        self._run_backup("sets")
+
+    def _backup_audio(self) -> None:
+        self._run_backup("audio")
+
+    def _run_backup(self, kind: str) -> None:
+        scope = self._current_scope()
+        dest = filedialog.askdirectory()
+        if not dest:
+            return
+        try:
+            copied, skipped = self.app.backup_catalog_files(
+                scope, kind, Path(dest)
+            )
+        except Exception as exc:
+            messagebox.showerror("Backup", f"Backup failed: {exc}")
+            return
+        label = "sets" if kind == "sets" else "audio files"
+        messagebox.showinfo(
+            "Backup",
+            f"Backed up {copied} {label}. Skipped {skipped} existing files.",
+        )
+
     def refresh(self) -> None:
-        self.stats = self.app.load_catalog_stats()
-        self._card_files.configure(text=str(self.stats.file_count))
-        self._card_docs.configure(text=str(self.stats.doc_count))
-        self._card_refs.configure(text=str(self.stats.refs_count))
-        self._card_missing.configure(text=str(self.stats.missing_refs))
+        scope = self._current_scope()
+        self.scope_label.configure(text=f"Scope: {scope}")
+        focus = self.app.load_dashboard_focus(scope)
+        self._card_sets.configure(text=str(focus.get("set_count", 0)))
+        self._card_set_size.configure(text=format_bytes(focus.get("set_bytes", 0)))
+        self._card_audio_size.configure(text=format_bytes(focus.get("audio_bytes", 0)))
+        self._card_missing_sets.configure(text=str(focus.get("missing_sets", 0)))
 
         summary_path = self.app.resolve_scan_summary()
         summary = _safe_read_json(summary_path) if summary_path else {}
@@ -369,12 +447,18 @@ class DashboardPanel(tk.Frame):
         self.activity_text.configure(state="disabled")
 
         devices = self.app.load_top_devices()
+        plugins = self.app.load_top_plugins()
         chains = self.app.load_top_chains()
         missing_paths = self.app.load_missing_refs_paths()
         self.top_devices_text.configure(state="normal")
         self.top_devices_text.delete("1.0", "end")
         self.top_devices_text.insert("end", "\n".join(devices) if devices else "No data yet.")
         self.top_devices_text.configure(state="disabled")
+
+        self.top_plugins_text.configure(state="normal")
+        self.top_plugins_text.delete("1.0", "end")
+        self.top_plugins_text.insert("end", "\n".join(plugins) if plugins else "No data yet.")
+        self.top_plugins_text.configure(state="disabled")
 
         self.top_chains_text.configure(state="normal")
         self.top_chains_text.delete("1.0", "end")
@@ -3160,7 +3244,40 @@ class AbletoolsUI(tk.Tk):
                     "ORDER BY usage_count DESC LIMIT ?",
                     (limit,),
                 ).fetchall()
+            if rows:
+                return [f"{name} ({count})" for name, count in rows]
+            rows = conn.execute(
+                "SELECT device_name, COUNT(*) FROM doc_device_hints "
+                "WHERE scope != 'preferences' "
+                "GROUP BY device_name "
+                "ORDER BY COUNT(*) DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
             return [f"{name} ({count})" for name, count in rows]
+        except Exception:
+            return []
+
+    def load_top_plugins(self, limit: int = 8) -> list[str]:
+        db_path = self.resolve_catalog_db_path()
+        if not db_path or not db_path.exists():
+            return []
+        try:
+            with sqlite3.connect(db_path) as conn:
+                rows = conn.execute(
+                    "SELECT COALESCE(name, path) AS label, COALESCE(vendor, '') AS vendor, COUNT(*) "
+                    "FROM plugin_index "
+                    "WHERE scope != 'preferences' "
+                    "GROUP BY label, vendor "
+                    "ORDER BY COUNT(*) DESC LIMIT ?",
+                    (limit,),
+                ).fetchall()
+            results = []
+            for label, vendor, count in rows:
+                if vendor:
+                    results.append(f"{label} ({vendor}, {count})")
+                else:
+                    results.append(f"{label} ({count})")
+            return results
         except Exception:
             return []
 
@@ -3195,6 +3312,105 @@ class AbletoolsUI(tk.Tk):
             return [f"{path} ({count})" for path, count in rows]
         except Exception:
             return []
+
+    def load_dashboard_focus(self, scope: str) -> dict[str, int]:
+        db_path = self.resolve_catalog_db_path()
+        if not db_path or not db_path.exists():
+            return {}
+        suffix = "" if scope == "live_recordings" else f"_{scope}"
+        backup_clause = "lower(path) NOT LIKE ? AND lower(path) NOT LIKE ? AND path NOT GLOB ?"
+        backup_params = ["%/backup/%", "%\\backup\\%", "*[[][0-9]*[]]*"]
+        result = {
+            "set_count": 0,
+            "set_bytes": 0,
+            "audio_bytes": 0,
+            "missing_sets": 0,
+        }
+        try:
+            with sqlite3.connect(db_path) as conn:
+                result["set_count"] = (
+                    conn.execute(
+                        f"SELECT COUNT(*) FROM file_index{suffix} "
+                        "WHERE ext IN ('.als', '.alc') AND " + backup_clause,
+                        backup_params,
+                    ).fetchone()[0]
+                    or 0
+                )
+                result["set_bytes"] = (
+                    conn.execute(
+                        f"SELECT SUM(size) FROM file_index{suffix} "
+                        "WHERE ext IN ('.als', '.alc') AND " + backup_clause,
+                        backup_params,
+                    ).fetchone()[0]
+                    or 0
+                )
+                result["audio_bytes"] = (
+                    conn.execute(
+                        f"SELECT SUM(size) FROM file_index{suffix} "
+                        "WHERE kind = 'media' AND " + backup_clause,
+                        backup_params,
+                    ).fetchone()[0]
+                    or 0
+                )
+                result["missing_sets"] = (
+                    conn.execute(
+                        "SELECT COUNT(*) FROM catalog_docs "
+                        "WHERE scope = ? AND ext IN ('.als', '.alc') "
+                        "AND missing_refs = 1 AND " + backup_clause,
+                        (scope, *backup_params),
+                    ).fetchone()[0]
+                    or 0
+                )
+        except Exception:
+            return result
+        return result
+
+    def backup_catalog_files(self, scope: str, kind: str, dest_dir: Path) -> tuple[int, int]:
+        db_path = self.resolve_catalog_db_path()
+        if not db_path or not db_path.exists():
+            return 0, 0
+        suffix = "" if scope == "live_recordings" else f"_{scope}"
+        backup_clause = "lower(path) NOT LIKE ? AND lower(path) NOT LIKE ? AND path NOT GLOB ?"
+        backup_params = ["%/backup/%", "%\\backup\\%", "*[[][0-9]*[]]*"]
+        if kind == "audio":
+            where = "kind = 'media'"
+        else:
+            where = "ext IN ('.als', '.alc')"
+        copied = 0
+        skipped = 0
+        active_root = self.active_root
+        try:
+            with sqlite3.connect(db_path) as conn:
+                rows = conn.execute(
+                    f"SELECT path FROM file_index{suffix} WHERE {where} AND {backup_clause}",
+                    backup_params,
+                ).fetchall()
+        except Exception:
+            return 0, 0
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        for (path_str,) in rows:
+            path = Path(path_str)
+            if not path.exists():
+                skipped += 1
+                continue
+            if active_root:
+                try:
+                    rel = path.relative_to(active_root)
+                except ValueError:
+                    rel = Path(path.name)
+            else:
+                rel = Path(path.name)
+            target = dest_dir / rel
+            if target.exists():
+                skipped += 1
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                shutil.copy2(path, target)
+                copied += 1
+            except Exception:
+                skipped += 1
+        return copied, skipped
 
     def _open_db_location(self) -> None:
         db_path = self.resolve_catalog_db_path()
