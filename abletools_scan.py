@@ -6,6 +6,7 @@ import gzip
 import hashlib
 import io
 import json
+import re
 import mimetypes
 import os
 import re
@@ -34,6 +35,7 @@ MEDIA_EXTS = {".wav", ".aif", ".aiff", ".flac", ".mp3", ".m4a", ".ogg"}
 DEFAULT_INDEX_EXTS = sorted(ABLETON_DOC_EXTS | ABLETON_ARTIFACT_EXTS)
 SCOPES = {"live_recordings", "user_library", "preferences"}
 SKIP_DIRS = {".git", ".venv", "venv", "__pycache__", ".DS_Store"}
+_TIMESTAMP_BRACKET_RE = re.compile(r"\[[0-9][0-9  T:_-]{4,}[0-9]\]")
 
 # Ableton docs are typically gzipped XML.
 # We'll parse in a "schema-agnostic" way (heuristics) for MVP.
@@ -302,6 +304,7 @@ def iter_files(
     incremental: bool,
     skipped_dirs: list[int],
     sort_entries: bool = False,
+    skip_backups: bool = True,
 ) -> Iterable[os.DirEntry]:
     stack = [root]
     while stack:
@@ -322,16 +325,20 @@ def iter_files(
             if sort_entries:
                 entries.sort(key=lambda e: e.name.lower())
             for entry in entries:
-                    if entry.name in SKIP_DIRS:
-                        continue
-                    try:
-                        if entry.is_dir(follow_symlinks=False):
-                            stack.append(Path(entry.path))
+                if entry.name in SKIP_DIRS:
+                    continue
+                try:
+                    if entry.is_dir(follow_symlinks=False):
+                        if skip_backups and entry.name.lower() == "backup":
                             continue
-                    except OSError:
+                        stack.append(Path(entry.path))
                         continue
-                    if entry.is_file(follow_symlinks=False) or entry.is_symlink():
-                        yield entry
+                except OSError:
+                    continue
+                if entry.is_file(follow_symlinks=False) or entry.is_symlink():
+                    if skip_backups and _TIMESTAMP_BRACKET_RE.search(entry.name):
+                        continue
+                    yield entry
         except OSError:
             continue
 
@@ -343,12 +350,19 @@ def count_files(
     all_files: bool,
     wanted_exts: set[str],
     sort_entries: bool = False,
+    skip_backups: bool = True,
 ) -> int:
     dir_updates: dict[str, int] = {}
     skipped_dirs = [0]
     total = 0
     for entry in iter_files(
-        root, dir_state, dir_updates, incremental, skipped_dirs, sort_entries=sort_entries
+        root,
+        dir_state,
+        dir_updates,
+        incremental,
+        skipped_dirs,
+        sort_entries=sort_entries,
+        skip_backups=skip_backups,
     ):
         p = Path(entry.path)
         ext = p.suffix.lower()
@@ -762,6 +776,11 @@ def main(argv: list[str]) -> int:
         help="Also index media files (wav/aif/flac/mp3/etc.)",
     )
     ap.add_argument(
+        "--include-backups",
+        action="store_true",
+        help="Include Backup folders and timestamped backup filenames.",
+    )
+    ap.add_argument(
         "--analyze-audio",
         action="store_true",
         help="Extract basic audio metadata for wav/aif/aiff (duration, rate, channels).",
@@ -868,6 +887,7 @@ def main(argv: list[str]) -> int:
 
     sort_entries = bool(args.checkpoint or args.resume)
     use_dir_state = args.incremental and not args.changed_only and target_files is None
+    skip_backups = not args.include_backups
 
     total_files = None
     detail_groups = set()
@@ -896,6 +916,7 @@ def main(argv: list[str]) -> int:
                 all_files,
                 wanted_exts,
                 sort_entries=sort_entries,
+                skip_backups=skip_backups,
             )
         print(f"[progress] total={total_files}")
 
@@ -903,7 +924,13 @@ def main(argv: list[str]) -> int:
         target_files
         if target_files is not None
         else iter_files(
-            root, dir_state, dir_updates, use_dir_state, skipped_dirs, sort_entries=sort_entries
+            root,
+            dir_state,
+            dir_updates,
+            use_dir_state,
+            skipped_dirs,
+            sort_entries=sort_entries,
+            skip_backups=skip_backups,
         )
     )
     for entry in entries:

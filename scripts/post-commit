@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "${ABLETOOLS_RUN_TARGETED_TESTS:-1}" == "0" ]]; then
+  exit 0
+fi
+
+echo "[post-commit] Running targeted tests"
+./scripts/ci_run_targeted.sh || exit 1

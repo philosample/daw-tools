@@ -17,10 +17,13 @@
   - incremental decision logic (mtime/size/ctime/hash).
   - scope handling and output file naming.
   - MIME detection fallback.
+  - skip directories named `Backup` and timestamped backup filenames (optionally includable).
 - `abletools_catalog_db.py`
   - schema creation for all scopes.
   - JSONL row ingestion and `ingest_state` updates.
   - `ref_exists` logic and uniqueness constraints.
+- `abletools_ui.py`
+  - formatting helpers (`format_mtime`, `truncate_path`, `set_detail_fields`).
 
 ### Integration Tests
 - Scan a controlled fixture directory and compare JSONL snapshots.
@@ -37,8 +40,29 @@
   - One ALS test file.
   - A fake Preferences.cfg and Options.txt.
   - Mixed file types and symlinks.
+- Harness scripts:
+  - `scripts/test_full_scan.sh`
+  - `scripts/test_targeted_scan.sh`
+  - `scripts/test_all.sh`
+- Targeted test runner:
+  - `scripts/ci_detect_changes.py` + `scripts/ci_run_targeted.sh`
+  - Optional git hook installer: `scripts/install_git_hooks.sh`
+
+## Catalog
+- See `docs/TEST_CATALOG.md` for the query/function/file coverage map starter.
+
+## Detector Coverage + Gaps
+- Current coverage:
+  - Python functions/classes via AST + diff line ranges.
+  - SQL strings from literals, simple concatenation, and f-strings in Python.
+  - Schema files in `schemas/*.schema.json`.
+- Known gaps (add when they become common):
+  - Queries or schemas stored outside Python (e.g., external `.sql` files).
+  - Config/CLI changes that alter runtime behavior without touching core modules.
+  - Resource/layout changes that affect UI queries or scan outputs.
+  - Schema or JSON fixture updates that need domain-specific validators.
+  - New entrypoints or scripts added outside the default catalog paths.
 
 ## CI Ideas
 - Basic lint + tests on push.
 - Optional integration tests on macOS runners (preferred for preference paths).
-

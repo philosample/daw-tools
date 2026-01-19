@@ -3,7 +3,13 @@ from __future__ import annotations
 import wave
 from pathlib import Path
 
-from abletools_scan import analyze_audio, iter_ableton_xml_nodes, parse_ableton_doc, parse_ableton_xml
+from abletools_scan import (
+    analyze_audio,
+    iter_ableton_xml_nodes,
+    iter_files,
+    parse_ableton_doc,
+    parse_ableton_xml,
+)
 
 
 def test_parse_ableton_doc_counts() -> None:
@@ -70,3 +76,39 @@ def test_iter_ableton_xml_nodes() -> None:
     nodes = list(iter_ableton_xml_nodes(text))
     assert nodes
     assert any(node["tag"] == "AudioTrack" for node in nodes)
+
+
+def test_iter_files_skips_backup_dir(tmp_path: Path) -> None:
+    backup_dir = tmp_path / "Backup"
+    backup_dir.mkdir()
+    (backup_dir / "skip.als").write_text("test", encoding="utf-8")
+    (tmp_path / "Set [2026-01-19 123456].als").write_text("test", encoding="utf-8")
+    (tmp_path / "keep.als").write_text("test", encoding="utf-8")
+    dir_state: dict[str, int] = {}
+    dir_updates: dict[str, int] = {}
+    skipped_dirs = [0]
+    paths = [
+        Path(entry.path).name
+        for entry in iter_files(tmp_path, dir_state, dir_updates, False, skipped_dirs)
+    ]
+    assert "keep.als" in paths
+    assert "skip.als" not in paths
+    assert "Set [2026-01-19 123456].als" not in paths
+
+
+def test_iter_files_include_backups(tmp_path: Path) -> None:
+    backup_dir = tmp_path / "Backup"
+    backup_dir.mkdir()
+    (backup_dir / "keep.als").write_text("test", encoding="utf-8")
+    (tmp_path / "Set [2026-01-19 123456].als").write_text("test", encoding="utf-8")
+    dir_state: dict[str, int] = {}
+    dir_updates: dict[str, int] = {}
+    skipped_dirs = [0]
+    paths = [
+        Path(entry.path).name
+        for entry in iter_files(
+            tmp_path, dir_state, dir_updates, False, skipped_dirs, skip_backups=False
+        )
+    ]
+    assert "keep.als" in paths
+    assert "Set [2026-01-19 123456].als" in paths

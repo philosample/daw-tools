@@ -5,6 +5,7 @@ import json
 import logging
 import queue
 import random
+import re
 import sqlite3
 import subprocess
 import sys
@@ -42,6 +43,50 @@ TITLE_FONT = ("Menlo", 16, "bold")
 H2_FONT = ("Menlo", 12, "bold")
 BODY_FONT = ("Menlo", 11)
 MONO_FONT = ("Menlo", 10)
+
+
+def format_mtime(value: object) -> str:
+    try:
+        ts = int(value)
+    except Exception:
+        return ""
+    if ts <= 0:
+        return ""
+    try:
+        return datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
+    except Exception:
+        return ""
+
+
+def truncate_path(path: str, max_len: int = 60) -> str:
+    if len(path) <= max_len:
+        return path
+    keep = max_len // 2
+    return f"{path[:keep]}…{path[-keep:]}"
+
+
+def set_detail_fields(
+    detail_rows: list[tuple[tk.Label, tk.Label]], fields: list[tuple[str, str]]
+) -> None:
+    for idx, (label, value) in enumerate(detail_rows):
+        if idx < len(fields):
+            label.configure(text=f"{fields[idx][0]}:")
+            value.configure(text=fields[idx][1])
+        else:
+            label.configure(text="")
+            value.configure(text="")
+
+
+_TIMESTAMP_BRACKET_RE = re.compile(r"\[[0-9][0-9  T:_-]{4,}[0-9]\]")
+
+
+def is_backup_path(path: str) -> bool:
+    if not path:
+        return False
+    p = Path(path)
+    if any(part.lower() == "backup" for part in p.parts):
+        return True
+    return bool(_TIMESTAMP_BRACKET_RE.search(p.name))
 
 
 class AnimatedGif:
@@ -846,12 +891,6 @@ class CatalogPanel(tk.Frame):
                 max_width = max(max_width, font.measure(value) + 20)
             self.tree.column(col, width=min(max_width, 420))
 
-    def _truncate_path(self, path: str, max_len: int = 60) -> str:
-        if len(path) <= max_len:
-            return path
-        keep = max_len // 2
-        return f"{path[:keep]}…{path[-keep:]}"
-
     def _format_bytes(self, value: object) -> str:
         try:
             size = int(value)
@@ -868,18 +907,6 @@ class CatalogPanel(tk.Frame):
         if unit_idx == 0:
             return f"{int(size_float)} {units[unit_idx]}"
         return f"{size_float:.1f} {units[unit_idx]}"
-
-    def _format_mtime(self, value: object) -> str:
-        try:
-            ts = int(value)
-        except Exception:
-            return ""
-        if ts <= 0:
-            return ""
-        try:
-            return datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
-        except Exception:
-            return ""
 
     def _parse_size_display(self, value: str) -> float:
         if not value:
@@ -909,17 +936,8 @@ class CatalogPanel(tk.Frame):
         except Exception:
             return 0.0
 
-    def _set_detail_fields(self, fields: list[tuple[str, str]]) -> None:
-        for idx, (label, value) in enumerate(self.detail_rows):
-            if idx < len(fields):
-                label.configure(text=f"{fields[idx][0]}:")
-                value.configure(text=fields[idx][1])
-            else:
-                label.configure(text="")
-                value.configure(text="")
-
     def _set_detail_message(self, message: str) -> None:
-        self._set_detail_fields([("Info", message)])
+        set_detail_fields(self.detail_rows, [("Info", message)])
 
     def _render_pref_summary(self) -> None:
         self.pref_summary.configure(state="normal")
@@ -980,13 +998,13 @@ class CatalogPanel(tk.Frame):
             clauses.append("has_samples = 1")
         if not self.show_backups.get() and scope != "preferences":
             clauses.append(
-                "lower(path) NOT LIKE ? AND lower(path) NOT LIKE ? AND lower(path) NOT LIKE ?"
+                "lower(path) NOT LIKE ? AND lower(path) NOT LIKE ? AND path NOT GLOB ?"
             )
-            params.extend(["%backup%", "%backups%", "%_backup%"])
+            params.extend(["%/backup/%", "%\\backup\\%", "*[[][0-9]*[]]*"])
             file_clauses.append(
-                "lower(path) NOT LIKE ? AND lower(path) NOT LIKE ? AND lower(path) NOT LIKE ?"
+                "lower(path) NOT LIKE ? AND lower(path) NOT LIKE ? AND path NOT GLOB ?"
             )
-            file_params.extend(["%backup%", "%backups%", "%_backup%"])
+            file_params.extend(["%/backup/%", "%\\backup\\%", "*[[][0-9]*[]]*"])
 
         where_sql = " AND ".join(clauses) if clauses else "1=1"
         file_where_sql = " AND ".join(file_clauses) if file_clauses else "1=1"
@@ -1041,19 +1059,19 @@ class CatalogPanel(tk.Frame):
                         values = {
                             "kind": row[0],
                             "source": row[1],
-                            "mtime": self._format_mtime(row[2]),
+                            "mtime": format_mtime(row[2]),
                             "scope": "preferences",
                         }
                         self._last_rows.append(values)
                         continue
                     elif scope == "user_library":
-                        name = self._truncate_path(Path(row[0]).name)
+                        name = truncate_path(Path(row[0]).name)
                         values = {
                             "name": name,
                             "path_full": row[0],
                             "ext": row[1],
                             "size": self._format_bytes(row[2]),
-                            "mtime": self._format_mtime(row[3]),
+                            "mtime": format_mtime(row[3]),
                             "tracks": "" if row[4] is None else str(row[4]),
                             "clips": "" if row[5] is None else str(row[5]),
                             "devices": "yes" if row[6] else "no",
@@ -1062,21 +1080,23 @@ class CatalogPanel(tk.Frame):
                             "scope": "user_library",
                         }
                     else:
-                        name = self._truncate_path(Path(row[0]).name)
+                        name = truncate_path(Path(row[0]).name)
                         values = {
                             "name": name,
                             "path_full": row[0],
                             "ext": row[1],
                             "size": self._format_bytes(row[2]),
-                            "mtime": self._format_mtime(row[3]),
+                            "mtime": format_mtime(row[3]),
                             "tracks": "" if row[4] is None else str(row[4]),
                             "clips": "" if row[5] is None else str(row[5]),
                             "devices": "yes" if row[6] else "no",
                             "samples": "yes" if row[7] else "no",
                             "missing": "yes" if row[8] else "no",
-                            "scanned_at": self._format_mtime(row[9]),
+                            "scanned_at": format_mtime(row[9]),
                             "scope": row[10],
                         }
+                    if not self.show_backups.get() and is_backup_path(values.get("path_full", "")):
+                        continue
                     row_values = [values.get(col, "") for col in self.visible_columns]
                     self.tree.insert("", "end", values=row_values)
                     self._last_rows.append(values)
@@ -1086,13 +1106,15 @@ class CatalogPanel(tk.Frame):
         except sqlite3.OperationalError as exc:
             if "no such table" in str(exc):
                 self._set_detail_message(
-                    "Catalog not built yet. Updating database and retrying..."
+                    "Catalog database missing tables. Run a scan or refresh the catalog."
                 )
-                self.app.refresh_catalog_db(background=False)
-                return self.refresh()
+                self.app.log_ui_error(f"catalog refresh: {exc}")
+                return
             self._set_detail_message(f"Failed to load catalog: {exc}")
+            self.app.log_ui_error(f"catalog refresh: {exc}")
         except Exception as exc:
             self._set_detail_message(f"Failed to load catalog: {exc}")
+            self.app.log_ui_error(f"catalog refresh: {exc}")
 
     def _set_detail(self, text: str) -> None:
         self.detail_text.configure(state="normal")
@@ -1134,13 +1156,13 @@ class CatalogPanel(tk.Frame):
                             value_keys = str(len(values))
                     fields = [
                         ("Kind", row["kind"]),
-                        ("Source", self._truncate_path(row["source"], 80)),
-                        ("Modified", self._format_mtime(row["mtime"])),
+                        ("Source", truncate_path(row["source"], 80)),
+                        ("Modified", format_mtime(row["mtime"])),
                         ("Keys", ", ".join(sorted(payload.keys()))[:80]),
                     ]
                     if value_keys:
                         fields.append(("Value keys", value_keys))
-                    self._set_detail_fields(fields)
+                    set_detail_fields(self.detail_rows, fields)
                     return
 
                 doc = conn.execute(
@@ -1152,11 +1174,12 @@ class CatalogPanel(tk.Frame):
                         f"FROM file_index{suffix} WHERE path = ?",
                         (path,),
                     ).fetchone()
-                except sqlite3.OperationalError:
-                    file_row = conn.execute(
-                        f"SELECT ext, size, mtime FROM file_index{suffix} WHERE path = ?",
-                        (path,),
-                    ).fetchone()
+                except sqlite3.OperationalError as exc:
+                    self._set_detail_message(
+                        "Catalog schema missing audio columns. Rebuild the catalog database."
+                    )
+                    self.app.log_ui_error(f"catalog schema mismatch: {exc}")
+                    return
                 samples = conn.execute(
                     f"SELECT COUNT(*) FROM doc_sample_refs{suffix} WHERE doc_path = ?",
                     (path,),
@@ -1175,12 +1198,12 @@ class CatalogPanel(tk.Frame):
 
         if not doc and scope == "user_library":
             fields = [
-                ("Path", self._truncate_path(path, 80)),
+                ("Path", truncate_path(path, 80)),
                 ("Type", values_map.get("ext", "")),
                 ("Size", values_map.get("size", "")),
                 ("Modified", values_map.get("mtime", "")),
             ]
-            self._set_detail_fields(fields)
+            set_detail_fields(self.detail_rows, fields)
             return
 
         if not doc:
@@ -1196,10 +1219,10 @@ class CatalogPanel(tk.Frame):
             audio_channels = file_row["audio_channels"] or ""
 
         fields = [
-            ("Path", self._truncate_path(doc["path"], 80)),
+            ("Path", truncate_path(doc["path"], 80)),
             ("Ext", file_row["ext"] if file_row else ""),
             ("Size", self._format_bytes(file_row["size"]) if file_row else ""),
-            ("Modified", self._format_mtime(file_row["mtime"]) if file_row else ""),
+            ("Modified", format_mtime(file_row["mtime"]) if file_row else ""),
             ("Tracks", str(doc["tracks_total"])),
             ("Clips", str(doc["clips_total"])),
             ("Devices", str(devices)),
@@ -1209,7 +1232,7 @@ class CatalogPanel(tk.Frame):
             ("Audio dur", str(audio_duration)),
             ("Audio rate", str(audio_rate)),
         ]
-        self._set_detail_fields(fields)
+        set_detail_fields(self.detail_rows, fields)
 
 
 class ScanPanel(ttk.LabelFrame):
@@ -1220,6 +1243,7 @@ class ScanPanel(ttk.LabelFrame):
         self.root_var = tk.StringVar(value=str(self.app.default_scan_root()))
         self.incremental_var = tk.BooleanVar(value=True)
         self.include_media_var = tk.BooleanVar(value=False)
+        self.include_backups_var = tk.BooleanVar(value=False)
         self.hash_var = tk.BooleanVar(value=False)
         self.rehash_var = tk.BooleanVar(value=False)
         self.hash_docs_var = tk.BooleanVar(value=False)
@@ -1335,6 +1359,11 @@ class ScanPanel(ttk.LabelFrame):
             text="Resume checkpoint",
             variable=self.resume_var,
         ).grid(row=2, column=3, sticky="w", padx=(0, 14), pady=(6, 0))
+        ttk.Checkbutton(
+            full_frame,
+            text="Include Backup folders",
+            variable=self.include_backups_var,
+        ).grid(row=2, column=4, sticky="w", padx=(0, 14), pady=(6, 0))
 
         targeted_frame = ttk.LabelFrame(opts, text="Targeted Scan (deep)", padding=10)
         targeted_frame.grid(row=2, column=0, columnspan=8, sticky="we", pady=(12, 0))
@@ -1600,6 +1629,13 @@ class ScanPanel(ttk.LabelFrame):
         search_var = tk.StringVar(value="")
         search_entry = tk.Entry(header, textvariable=search_var, width=40)
         search_entry.pack(side="left", padx=(0, 12))
+        ignore_backups_var = tk.BooleanVar(value=not self.include_backups_var.get())
+        ttk.Checkbutton(
+            header,
+            text="Ignore backups",
+            variable=ignore_backups_var,
+            style="Ghost.TButton",
+        ).pack(side="right")
 
         body = tk.Frame(dialog, bg=BG)
         body.pack(fill="both", expand=True, padx=12, pady=(0, 12))
@@ -1634,7 +1670,16 @@ class ScanPanel(ttk.LabelFrame):
             dialog.destroy()
             return
         rows: list[tuple[str, dict[str, str]]] = []
-        for item in sets:
+        sorted_sets = sorted(
+            sets,
+            key=lambda item: (
+                -int(item.get("mtime") or 0),
+                str(item.get("name", "")).lower(),
+            ),
+        )
+        for item in sorted_sets:
+            if ignore_backups_var.get() and is_backup_path(str(item.get("path", ""))):
+                continue
             rows.append(
                 (
                     tree.insert(
@@ -1643,7 +1688,7 @@ class ScanPanel(ttk.LabelFrame):
                         values=(
                             item.get("name", ""),
                             item.get("path", ""),
-                            self.app._format_mtime(item.get("mtime")),
+                            format_mtime(item.get("mtime")),
                             item.get("tracks", ""),
                             item.get("clips", ""),
                         ),
@@ -1656,12 +1701,20 @@ class ScanPanel(ttk.LabelFrame):
             query = search_var.get().strip().lower()
             for iid, meta in rows:
                 hay = f"{meta.get('name','')} {meta.get('path','')}".lower()
-                if query and query not in hay:
+                if (ignore_backups_var.get() and is_backup_path(str(meta.get("path", "")))) or (
+                    query and query not in hay
+                ):
                     tree.detach(iid)
                 else:
                     tree.reattach(iid, "", "end")
 
         search_entry.bind("<KeyRelease>", _apply_filter)
+        ignore_backups_var.trace_add("write", _apply_filter)
+
+        def _sync_ignore_backups(*_args: object) -> None:
+            ignore_backups_var.set(not self.include_backups_var.get())
+
+        self.include_backups_var.trace_add("write", _sync_ignore_backups)
 
         result: dict[str, Optional[list[Path]]] = {"paths": None}
 
@@ -1922,6 +1975,8 @@ class ScanPanel(ttk.LabelFrame):
                 cmd.append("--incremental")
             if self.include_media_var.get():
                 cmd.append("--include-media")
+            if self.include_backups_var.get():
+                cmd.append("--include-backups")
             if self.analyze_audio_var.get():
                 cmd.append("--analyze-audio")
             if self.hash_var.get():
@@ -2011,6 +2066,8 @@ class ScanPanel(ttk.LabelFrame):
                 "--progress",
                 "--verbose",
             ]
+            if self.include_backups_var.get():
+                cmd.append("--include-backups")
             if self.deep_snapshot_var.get():
                 cmd.append("--deep-xml-snapshot")
             if self.xml_nodes_var.get():
@@ -2481,7 +2538,7 @@ class PreferencesPanel(tk.Frame):
         self.source_items = []
         self._set_payload("No preferences loaded.")
         self._set_status("")
-        self._set_detail_fields([])
+        set_detail_fields(self.detail_rows, [])
         db_path = self.app.resolve_prefs_db_path()
         if not db_path or not db_path.exists():
             self._set_payload("Database not found. Run a scan or prefs refresh.")
@@ -2550,12 +2607,13 @@ class PreferencesPanel(tk.Frame):
                     + "\n\n... (truncated, enable export if you need full payload)"
                 )
             self._set_payload(payload_text)
-            self._set_detail_fields(
+            set_detail_fields(
+                self.detail_rows,
                 [
                     ("Kind", kind),
-                    ("Source", self._truncate_path(source, 80)),
-                    ("Modified", self._format_mtime(mtime)),
-                ]
+                    ("Source", truncate_path(source, 80)),
+                    ("Modified", format_mtime(mtime)),
+                ],
             )
             return
         try:
@@ -2567,18 +2625,9 @@ class PreferencesPanel(tk.Frame):
             return
 
         fields = self._extract_pref_fields(kind, source, mtime, payload)
-        self._set_detail_fields(fields)
+        set_detail_fields(self.detail_rows, fields)
         summary = self._summarize_payload(kind, source, payload)
         self._set_payload(summary)
-
-    def _set_detail_fields(self, fields: list[tuple[str, str]]) -> None:
-        for idx, (label, value) in enumerate(self.detail_rows):
-            if idx < len(fields):
-                label.configure(text=f"{fields[idx][0]}:")
-                value.configure(text=fields[idx][1])
-            else:
-                label.configure(text="")
-                value.configure(text="")
 
     def _extract_pref_fields(
         self, kind: str, source: str, mtime: int, payload: dict
@@ -2597,8 +2646,8 @@ class PreferencesPanel(tk.Frame):
                 options_count = str(len(payload["options"]))
         fields = [
             ("Kind", kind),
-            ("Source", self._truncate_path(source, 80)),
-            ("Modified", self._format_mtime(mtime)),
+            ("Source", truncate_path(source, 80)),
+            ("Modified", format_mtime(mtime)),
             ("Keys", ", ".join(keys)[:120]),
         ]
         if value_keys:
@@ -2611,24 +2660,6 @@ class PreferencesPanel(tk.Frame):
 
     def _format_source_entry(self, kind: str, source: str, _mtime: int) -> str:
         return f"{kind} | {source}"
-
-    def _format_mtime(self, value: object) -> str:
-        try:
-            ts = int(value)
-        except Exception:
-            return ""
-        if ts <= 0:
-            return ""
-        try:
-            return datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
-        except Exception:
-            return ""
-
-    def _truncate_path(self, path: str, max_len: int = 80) -> str:
-        if len(path) <= max_len:
-            return path
-        keep = max_len // 2
-        return f"{path[:keep]}…{path[-keep:]}"
 
     def _summarize_payload(self, kind: str, source: str, payload: dict) -> str:
         lines = [f"Kind: {kind}", f"Source: {source}"]

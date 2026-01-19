@@ -1,6 +1,7 @@
 # Worklog & Backlog
 
 ## Worklog
+- 2026-01-19: Updated agent policy: auto-commit allowed when configured, but pushes require explicit approval; run syntax checks/tests before proposing commits.
 - 2026-01-19: Added comprehensive XML node capture (opt-in), schema validation, and scan performance safeguards (hash-docs-only, changed-only, checkpoints).
 - 2026-01-19: Added structured XML extraction and normalized tables (tracks/clips/devices/routing) plus schema docs.
 - 2026-01-19: Split scan modes (full vs targeted) and added per-set JSON cache for targeted scans.
