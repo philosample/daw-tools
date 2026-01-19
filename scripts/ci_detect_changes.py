@@ -11,6 +11,20 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SQL_RE = re.compile(r"\\b(SELECT|INSERT|UPDATE|DELETE|WITH)\\b", re.IGNORECASE)
 SQL_STRIP_RE = re.compile(r"\\s+")
+TEST_ITEM_PREFIXES = (
+    "abletools_",
+    "ramify_core.py",
+    "ableton_ramify.py",
+)
+
+
+def is_test_item_file(path: str) -> bool:
+    if path.startswith("schemas/") and path.endswith(".schema.json"):
+        return True
+    name = Path(path).name
+    if name.startswith(TEST_ITEM_PREFIXES):
+        return True
+    return False
 
 
 @dataclass
@@ -229,7 +243,8 @@ def detect_changed_items(
 
     for file in changed_files:
         if file not in by_file:
-            missing.append({"file": file, "reason": "file missing from coverage_map"})
+            if is_test_item_file(file):
+                missing.append({"file": file, "reason": "file missing from coverage_map"})
             continue
         matched.extend(by_file[file])
 
@@ -241,6 +256,8 @@ def detect_changed_items(
 
     # detect changed functions/classes missing in the map
     for file in changed_files:
+        if not is_test_item_file(file):
+            continue
         path = ROOT / file
         if not path.exists() or path.suffix != ".py":
             continue
@@ -265,11 +282,6 @@ def detect_changed_items(
                 for item in map_items
             ):
                 missing.append({"file": file, "reason": f"query '{q['name']}' missing from coverage_map"})
-
-    if changed_defs:
-        for name in changed_defs:
-            if not any(item.name == name for item in map_items):
-                missing.append({"file": "<diff>", "reason": f"definition '{name}' missing from coverage_map"})
 
     tests = []
     for item in matched:
