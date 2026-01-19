@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from abletools_prefs import load_plugin_payloads, parse_preferences
+from abletools_prefs import get_scan_root, load_plugin_payloads, parse_preferences, set_scan_root
 
 
 def test_parse_preferences_values(tmp_path: Path) -> None:
@@ -50,3 +50,12 @@ def test_load_plugin_payloads(tmp_path: Path) -> None:
     assert payloads
     plugins = payloads[0]["plugins"]
     assert any(p["name"] == "TestFX" for p in plugins)
+
+
+def test_scan_root_cache(tmp_path: Path) -> None:
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    root = tmp_path / "Live Recordings"
+    root.mkdir()
+    set_scan_root(cache_dir, root)
+    assert get_scan_root(cache_dir) == root

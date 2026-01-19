@@ -21,7 +21,7 @@ import tkinter as tk
 import tkinter.font as tkfont
 from tkinter import filedialog, messagebox, ttk
 
-from abletools_prefs import get_key_paths, get_preferences_folder, suggest_scan_root
+from abletools_prefs import get_key_paths, get_preferences_folder, get_scan_root, set_scan_root, suggest_scan_root
 from ramify_core import iter_targets, process_file
 
 ABLETOOLS_DIR = Path(__file__).resolve().parent
@@ -1697,6 +1697,12 @@ class ScanPanel(ttk.LabelFrame):
                 )
             )
 
+        if self.targeted_paths:
+            selected_paths = {str(path) for path in self.targeted_paths}
+            for iid, meta in rows:
+                if str(meta.get("path", "")) in selected_paths:
+                    tree.selection_add(iid)
+
         def _apply_filter(_event: object | None = None) -> None:
             query = search_var.get().strip().lower()
             for iid, meta in rows:
@@ -1724,12 +1730,24 @@ class ScanPanel(ttk.LabelFrame):
                 messagebox.showinfo("Targeted Scan", "Select one or more sets.")
                 return
             selected_paths: list[Path] = []
+            selected_names: list[str] = []
             for iid in picks:
                 values = tree.item(iid, "values")
                 path = values[1]
                 if path:
                     selected_paths.append(Path(path))
+                name = str(values[0])
+                lowered = name.lower()
+                if lowered.endswith(".als") or lowered.endswith(".alc"):
+                    name = name[:-4]
+                if name:
+                    selected_names.append(name)
             result["paths"] = selected_paths
+            if selected_names:
+                preview = ", ".join(selected_names[:6])
+                if len(selected_names) > 6:
+                    preview += f" …(+{len(selected_names) - 6})"
+                self._enqueue(f"Targeted sets selected ({len(selected_names)}): {preview}")
             dialog.destroy()
 
         def _cancel() -> None:
@@ -3044,6 +3062,9 @@ class AbletoolsUI(tk.Tk):
 
     def default_scan_root(self) -> Path:
         cache_dir = self.catalog_dir()
+        cached = get_scan_root(cache_dir)
+        if cached:
+            return cached
         suggested = suggest_scan_root(cache_dir)
         if suggested:
             return suggested
@@ -3066,6 +3087,10 @@ class AbletoolsUI(tk.Tk):
     def set_active_root(self, root: Path) -> None:
         self.active_root = root
         self.active_root_var.set(f"Active root: {root}")
+        try:
+            set_scan_root(self.catalog_dir(), root)
+        except Exception:
+            pass
 
     def set_current_scope(self, scope: str) -> None:
         if scope in {"live_recordings", "user_library", "preferences", "all"}:

@@ -32,6 +32,24 @@ def _save_cache(cache_dir: Path, data: dict) -> None:
     cache_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 
+def get_scan_root(cache_dir: Path) -> Path | None:
+    cache = _load_cache(cache_dir)
+    scan_root = cache.get("scan_root")
+    if not scan_root:
+        return None
+    path = Path(scan_root).expanduser()
+    if path.exists() and path.is_dir():
+        return path
+    return None
+
+
+def set_scan_root(cache_dir: Path, root: Path) -> None:
+    cache = _load_cache(cache_dir)
+    cache["scan_root"] = str(root)
+    cache["scan_root_updated_at"] = int(time.time())
+    _save_cache(cache_dir, cache)
+
+
 def _find_latest(root: Path, pattern: str) -> Path | None:
     if not root.exists():
         return None
