@@ -66,15 +66,39 @@ def iter_jsonl(path: Path):
                 continue
             yield line_no, json.loads(line)
 
+def iter_jsonl_from_offset(path: Path, start_offset: int):
+    with path.open("rb") as handle:
+        if start_offset > 0:
+            handle.seek(start_offset)
+            handle.readline()
+        line_no = 0
+        while True:
+            line = handle.readline()
+            if not line:
+                break
+            start_offset = handle.tell()
+            line = line.strip()
+            if not line:
+                continue
+            line_no += 1
+            yield line_no, json.loads(line.decode("utf-8")), start_offset
 
-def validate_jsonl(path: Path, schema: dict, max_errors: int, ignore_required: set[str] | None = None) -> list[str]:
+
+def validate_jsonl(
+    path: Path,
+    schema: dict,
+    max_errors: int,
+    ignore_required: set[str] | None = None,
+    start_offset: int = 0,
+) -> tuple[list[str], int]:
     errors: list[str] = []
-    for line_no, record in iter_jsonl(path):
+    end_offset = start_offset
+    for line_no, record, end_offset in iter_jsonl_from_offset(path, start_offset):
         for err in validate_record(schema, record, ignore_required=ignore_required):
             errors.append(f"{path.name}:{line_no}: {err}")
             if len(errors) >= max_errors:
-                return errors
-    return errors
+                return errors, end_offset
+    return errors, end_offset
 
 
 def validate_json(path: Path, schema: dict) -> list[str]:
@@ -105,12 +129,21 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Validate Abletools JSON/JSONL outputs against schemas.")
     ap.add_argument("catalog", nargs="?", default=".abletools_catalog", help="Catalog directory")
     ap.add_argument("--max-errors", type=int, default=50, help="Stop after this many errors")
+    ap.add_argument("--incremental", action="store_true", help="Validate only new JSONL data")
     args = ap.parse_args()
 
     catalog_dir = Path(args.catalog)
     if not catalog_dir.exists():
         print(f"Catalog directory not found: {catalog_dir}")
         return 2
+
+    state_path = catalog_dir / "schema_validate_state.json"
+    state = {}
+    if args.incremental and state_path.exists():
+        try:
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+        except Exception:
+            state = {}
 
     total_errors: list[str] = []
     for data_path, schema_path, kind, ignore_required in build_targets(catalog_dir):
@@ -121,12 +154,19 @@ def main() -> int:
             continue
         schema = _load_schema(schema_path)
         if kind == "jsonl":
-            errors = validate_jsonl(
+            start_offset = int(state.get(data_path.name, 0)) if args.incremental else 0
+            size = data_path.stat().st_size
+            if start_offset > size:
+                start_offset = 0
+            errors, end_offset = validate_jsonl(
                 data_path,
                 schema,
                 args.max_errors - len(total_errors),
                 ignore_required=ignore_required,
+                start_offset=start_offset,
             )
+            if args.incremental:
+                state[data_path.name] = end_offset
         else:
             errors = validate_json(data_path, schema)
         total_errors.extend(errors)
@@ -138,6 +178,12 @@ def main() -> int:
         for err in total_errors:
             print(f"- {err}")
         return 1
+
+    if args.incremental:
+        try:
+            state_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+        except Exception:
+            pass
 
     print("Schema validation passed.")
     return 0

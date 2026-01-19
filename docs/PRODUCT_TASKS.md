@@ -4,8 +4,10 @@
 - Normalize scan output across all scopes.
 - Add fixture-based tests for scan + db migrations.
 - Improve prefs parsing and stable root detection.
-- Add scan progress indicators (percentage or path-based activity updates). (in progress)
-- Add schema validation step to CI or preflight.
+- Add scan progress indicators (percentage or path-based activity updates). (done)
+- Add schema validation step to CI or preflight. (done: incremental validator)
+- Add scan checkpoints + resume for long runs. (done)
+- Add doc-only hashing + changed-only scans for faster refresh. (done)
 
 ## Phase 2: Catalog Depth
 - ALS parsing expansion (tracks/devices/clips/routing). (in progress)

@@ -93,3 +93,4 @@ Analytics tables:
 - Any new extractor outputs must update the JSON schema files and DB tables.
 - For new extension families, the minimal requirement is to populate `file_index.jsonl` and extend the schema docs.
 - Validate outputs with `python abletools_schema_validate.py <catalog_dir>`.
+- Use `--incremental` to validate only new JSONL data.

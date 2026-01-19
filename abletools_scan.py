@@ -286,6 +286,7 @@ def iter_files(
     dir_updates: dict[str, int],
     incremental: bool,
     skipped_dirs: list[int],
+    sort_entries: bool = False,
 ) -> Iterable[os.DirEntry]:
     stack = [root]
     while stack:
@@ -302,7 +303,10 @@ def iter_files(
                     continue
                 dir_updates[str(current)] = dir_mtime
             with os.scandir(current) as it:
-                for entry in it:
+                entries = list(it)
+            if sort_entries:
+                entries.sort(key=lambda e: e.name.lower())
+            for entry in entries:
                     if entry.name in SKIP_DIRS:
                         continue
                     try:
@@ -323,11 +327,14 @@ def count_files(
     incremental: bool,
     all_files: bool,
     wanted_exts: set[str],
+    sort_entries: bool = False,
 ) -> int:
     dir_updates: dict[str, int] = {}
     skipped_dirs = [0]
     total = 0
-    for entry in iter_files(root, dir_state, dir_updates, incremental, skipped_dirs):
+    for entry in iter_files(
+        root, dir_state, dir_updates, incremental, skipped_dirs, sort_entries=sort_entries
+    ):
         p = Path(entry.path)
         ext = p.suffix.lower()
         if not all_files and ext not in wanted_exts:
@@ -647,6 +654,31 @@ def main(argv: list[str]) -> int:
         help="Emit full XML node records for Ableton docs/artifacts.",
     )
     ap.add_argument(
+        "--hash-docs-only",
+        action="store_true",
+        help="Compute hashes only for Ableton docs/artifacts.",
+    )
+    ap.add_argument(
+        "--changed-only",
+        action="store_true",
+        help="Only process changed files even without dir-state skipping.",
+    )
+    ap.add_argument(
+        "--checkpoint",
+        action="store_true",
+        help="Write scan checkpoints to allow resuming.",
+    )
+    ap.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume from last scan checkpoint (requires deterministic order).",
+    )
+    ap.add_argument(
+        "--deep-xml-snapshot",
+        action="store_true",
+        help="One-time deep snapshot: disable incremental and emit XML nodes.",
+    )
+    ap.add_argument(
         "--include-media",
         action="store_true",
         help="Also index media files (wav/aif/flac/mp3/etc.)",
@@ -679,6 +711,11 @@ def main(argv: list[str]) -> int:
     )
     ap.add_argument("--verbose", action="store_true", help="Verbose logs.")
     args = ap.parse_args(argv)
+    if args.deep_xml_snapshot:
+        args.xml_nodes = True
+        args.incremental = False
+        args.changed_only = False
+        args.hash_docs_only = True
 
     root = Path(args.root).expanduser().resolve()
     if not root.exists() or not root.is_dir():
@@ -721,13 +758,38 @@ def main(argv: list[str]) -> int:
     refs_total = 0
     refs_missing = 0
 
+    checkpoint_path = out_dir / f"scan_checkpoint{suffix}.json"
+    resume_remaining = 0
+    if args.resume and checkpoint_path.exists():
+        try:
+            resume_data = json.loads(checkpoint_path.read_text(encoding="utf-8"))
+            resume_remaining = int(resume_data.get("scanned", 0))
+            scanned = resume_remaining
+        except Exception:
+            resume_remaining = 0
+
+    sort_entries = bool(args.checkpoint or args.resume)
+    use_dir_state = args.incremental and not args.changed_only
+
     total_files = None
     if args.progress:
         print("[progress] status=counting")
-        total_files = count_files(root, dir_state, args.incremental, all_files, wanted_exts)
+        total_files = count_files(
+            root,
+            dir_state,
+            use_dir_state,
+            all_files,
+            wanted_exts,
+            sort_entries=sort_entries,
+        )
         print(f"[progress] total={total_files}")
 
-    for entry in iter_files(root, dir_state, dir_updates, args.incremental, skipped_dirs):
+    for entry in iter_files(
+        root, dir_state, dir_updates, use_dir_state, skipped_dirs, sort_entries=sort_entries
+    ):
+        if resume_remaining > 0:
+            resume_remaining -= 1
+            continue
         scanned += 1
         p = Path(entry.path)
         ext = p.suffix.lower()
@@ -760,7 +822,7 @@ def main(argv: list[str]) -> int:
         prev = state.get(rel)
         current_sha1: Optional[str] = None
         sha1_error: Optional[str] = None
-        if args.incremental and prev:
+        if (args.incremental or args.changed_only) and prev:
             if prev.get("size") == size and prev.get("mtime") == mtime and prev.get("ctime") == ctime:
                 if args.hash and args.rehash_all:
                     try:
@@ -774,6 +836,21 @@ def main(argv: list[str]) -> int:
                 else:
                     skipped += 1
                     continue
+            if args.hash_docs_only and ext in (ABLETON_DOC_EXTS | ABLETON_ARTIFACT_EXTS):
+                try:
+                    current_sha1 = sha1_file(p)
+                except Exception as e:
+                    sha1_error = str(e)
+                else:
+                    if prev.get("sha1") and current_sha1 == prev.get("sha1"):
+                        skipped += 1
+                        state[rel] = {
+                            "size": size,
+                            "mtime": mtime,
+                            "ctime": ctime,
+                            "sha1": current_sha1,
+                        }
+                        continue
 
         rec = {
             "path": rel,
@@ -798,7 +875,7 @@ def main(argv: list[str]) -> int:
             "scope": scope,
         }
 
-        if args.hash:
+        if args.hash or (args.hash_docs_only and ext in (ABLETON_DOC_EXTS | ABLETON_ARTIFACT_EXTS)):
             if current_sha1 is None and sha1_error is None:
                 try:
                     current_sha1 = sha1_file(p)
@@ -833,7 +910,7 @@ def main(argv: list[str]) -> int:
 
         # Update state
         state[rel] = {"size": size, "mtime": mtime, "ctime": ctime}
-        if args.hash and "sha1" in rec:
+        if (args.hash or args.hash_docs_only) and "sha1" in rec:
             state[rel]["sha1"] = rec["sha1"]
 
         # Parse Ableton docs and artifacts (.als/.alc/.adg/.adv/.agr/.alp)
@@ -958,6 +1035,17 @@ def main(argv: list[str]) -> int:
                 percent = (scanned / total_files) * 100.0
                 print(f"[progress] scanned={scanned} total={total_files} percent={percent:.1f}")
 
+        if args.checkpoint and scanned % 1000 == 0:
+            checkpoint_payload = {
+                "scanned": scanned,
+                "total_files": total_files,
+                "last_path": rel,
+                "updated_at": int(time.time()),
+            }
+            checkpoint_path.write_text(
+                json.dumps(checkpoint_payload, indent=2), encoding="utf-8"
+            )
+
     save_state(state_path, state)
     if dir_updates:
         dir_state.update(dir_updates)
@@ -997,6 +1085,11 @@ def main(argv: list[str]) -> int:
         f"scanned={scanned} indexed={indexed} parsed_docs={parsed_docs} skipped={skipped}\n"
         f"elapsed_sec={finished-started}"
     )
+    if args.checkpoint and checkpoint_path.exists():
+        try:
+            checkpoint_path.unlink()
+        except OSError:
+            pass
     return 0
 
 

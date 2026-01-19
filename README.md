@@ -63,6 +63,15 @@ A consolidated SQLite DB is written to:
 # Scan all files (all scopes) with hashing
 python abletools_scan.py /path/to/Root --scope live_recordings --hash --rehash-all
 
+# One-time deep XML snapshot (full coverage, no incremental)
+python abletools_scan.py /path/to/Root --scope live_recordings --deep-xml-snapshot --xml-nodes
+
+# Changed-only scan with checkpoints
+python abletools_scan.py /path/to/Root --scope live_recordings --changed-only --checkpoint
+
+# Resume a checkpointed scan
+python abletools_scan.py /path/to/Root --scope live_recordings --resume --checkpoint
+
 # Incremental DB update
 python abletools_catalog_db.py ./.abletools_catalog --append
 
@@ -77,6 +86,9 @@ python abletools_maintenance.py ./.abletools_catalog/abletools_catalog.sqlite --
 
 # Validate JSON/JSONL outputs against schemas
 python abletools_schema_validate.py ./.abletools_catalog
+
+# Incremental schema validation (new JSONL only)
+python abletools_schema_validate.py ./.abletools_catalog --incremental
 ```
 
 ## Project Layout

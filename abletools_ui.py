@@ -1159,9 +1159,14 @@ class ScanPanel(ttk.LabelFrame):
         self.include_media_var = tk.BooleanVar(value=False)
         self.hash_var = tk.BooleanVar(value=False)
         self.rehash_var = tk.BooleanVar(value=False)
+        self.hash_docs_var = tk.BooleanVar(value=False)
         self.scope_var = tk.StringVar(value="live_recordings")
         self.all_files_var = tk.BooleanVar(value=True)
         self.analyze_audio_var = tk.BooleanVar(value=False)
+        self.changed_only_var = tk.BooleanVar(value=False)
+        self.checkpoint_var = tk.BooleanVar(value=True)
+        self.resume_var = tk.BooleanVar(value=False)
+        self.deep_snapshot_var = tk.BooleanVar(value=False)
         self.log_visible = tk.BooleanVar(value=True)
 
         self._proc: subprocess.Popen | None = None
@@ -1229,6 +1234,32 @@ class ScanPanel(ttk.LabelFrame):
             text="Analyze audio",
             variable=self.analyze_audio_var,
         ).grid(row=0, column=7, sticky="w", padx=(14, 0))
+
+        ttk.Checkbutton(
+            opts,
+            text="Deep XML snapshot",
+            variable=self.deep_snapshot_var,
+        ).grid(row=1, column=0, sticky="w", padx=(0, 14), pady=(6, 0))
+        ttk.Checkbutton(
+            opts,
+            text="Hash Ableton sets only",
+            variable=self.hash_docs_var,
+        ).grid(row=1, column=1, sticky="w", padx=(0, 14), pady=(6, 0))
+        ttk.Checkbutton(
+            opts,
+            text="Changed-only scan",
+            variable=self.changed_only_var,
+        ).grid(row=1, column=2, sticky="w", padx=(0, 14), pady=(6, 0))
+        ttk.Checkbutton(
+            opts,
+            text="Write checkpoints",
+            variable=self.checkpoint_var,
+        ).grid(row=1, column=3, sticky="w", padx=(0, 14), pady=(6, 0))
+        ttk.Checkbutton(
+            opts,
+            text="Resume checkpoint",
+            variable=self.resume_var,
+        ).grid(row=1, column=4, sticky="w", padx=(0, 14), pady=(6, 0))
 
         btns = ttk.Frame(self)
         btns.grid(row=2, column=0, columnspan=3, sticky="we", pady=(10, 0))
@@ -1558,7 +1589,7 @@ class ScanPanel(ttk.LabelFrame):
             if validator.exists():
                 try:
                     proc = subprocess.run(
-                        [sys.executable, str(validator), str(catalog_dir)],
+                        [sys.executable, str(validator), str(catalog_dir), "--incremental"],
                         cwd=str(self.app.abletools_dir),
                         capture_output=True,
                         text=True,
@@ -1643,10 +1674,20 @@ class ScanPanel(ttk.LabelFrame):
                 cmd.append("--hash")
                 if self.rehash_var.get():
                     cmd.append("--rehash-all")
+            if self.hash_docs_var.get():
+                cmd.append("--hash-docs-only")
             if not self.all_files_var.get():
                 cmd.append("--only-known")
             cmd.append("--progress")
             cmd.append("--xml-nodes")
+            if self.changed_only_var.get():
+                cmd.append("--changed-only")
+            if self.checkpoint_var.get():
+                cmd.append("--checkpoint")
+            if self.resume_var.get():
+                cmd.append("--resume")
+            if self.deep_snapshot_var.get():
+                cmd.append("--deep-xml-snapshot")
             cmd.append("--verbose")
             cmds.append(cmd)
 
