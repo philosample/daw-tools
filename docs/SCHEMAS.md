@@ -8,11 +8,11 @@ Extensions are grouped into families and mapped to their JSONL/DB storage:
 
 - Ableton docs: `.als`, `.alc`
   - Format: gzipped XML
-  - JSONL: `ableton_docs.jsonl`, `ableton_struct.jsonl`, `refs_graph.jsonl`
+  - JSONL: `ableton_docs.jsonl`, `ableton_struct.jsonl`, `ableton_xml_nodes.jsonl`, `refs_graph.jsonl`
   - DB: `ableton_docs*`, `ableton_tracks*`, `ableton_clips*`, `ableton_devices*`, `ableton_routing*`, `doc_sample_refs*`, `doc_device_hints*`, `doc_device_sequence*`, `refs_graph*`
 - Ableton artifacts: `.adg`, `.adv`, `.agr`, `.alp`
   - Format: gzipped XML (parsed with same extractor)
-  - JSONL: `ableton_docs.jsonl`, `ableton_struct.jsonl`, `refs_graph.jsonl`
+  - JSONL: `ableton_docs.jsonl`, `ableton_struct.jsonl`, `ableton_xml_nodes.jsonl`, `refs_graph.jsonl`
   - DB: same tables as Ableton docs (with `kind=ableton_artifact`)
 - Media: `.wav`, `.aif`, `.aiff`, `.flac`, `.mp3`, `.m4a`, `.ogg`
   - JSONL: `file_index.jsonl`
@@ -47,6 +47,7 @@ Schema files live in `schemas/`:
 - `schemas/ableton_docs.schema.json`
 - `schemas/refs_graph.schema.json`
 - `schemas/ableton_struct.schema.json`
+- `schemas/ableton_xml_nodes.schema.json`
 - `schemas/scan_summary.schema.json`
 - `schemas/scan_state.schema.json`
 - `schemas/prefs_payload.schema.json`

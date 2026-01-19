@@ -94,6 +94,7 @@ def build_targets(catalog_dir: Path) -> list[tuple[Path, Path, str, set[str] | N
         targets.append((catalog_dir / f"file_index{suffix}.jsonl", schema_dir / "file_index.schema.json", "jsonl", ignore_scope))
         targets.append((catalog_dir / f"ableton_docs{suffix}.jsonl", schema_dir / "ableton_docs.schema.json", "jsonl", ignore_scope))
         targets.append((catalog_dir / f"ableton_struct{suffix}.jsonl", schema_dir / "ableton_struct.schema.json", "jsonl", ignore_scope))
+        targets.append((catalog_dir / f"ableton_xml_nodes{suffix}.jsonl", schema_dir / "ableton_xml_nodes.schema.json", "jsonl", ignore_scope))
         targets.append((catalog_dir / f"refs_graph{suffix}.jsonl", schema_dir / "refs_graph.schema.json", "jsonl", ignore_scope))
         targets.append((catalog_dir / f"scan_state{suffix}.json", schema_dir / "scan_state.schema.json", "json", None))
         targets.append((catalog_dir / f"scan_summary{suffix}.json", schema_dir / "scan_summary.schema.json", "json", None))

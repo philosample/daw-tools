@@ -1434,6 +1434,10 @@ class ScanPanel(ttk.LabelFrame):
             if "=" in part:
                 key, val = part.split("=", 1)
                 data[key.strip()] = val.strip()
+        status = data.get("status")
+        if status == "counting":
+            self.status_var.set("Counting files...")
+            return
         total = data.get("total")
         percent = data.get("percent")
         if total:
@@ -1441,6 +1445,13 @@ class ScanPanel(ttk.LabelFrame):
                 self._progress_total = int(total)
             except ValueError:
                 self._progress_total = None
+        if percent is None and total and data.get("scanned"):
+            try:
+                scanned = int(data["scanned"])
+                pct = (scanned / max(1, int(total))) * 100.0
+                percent = f"{pct:.1f}"
+            except ValueError:
+                percent = None
         if percent:
             try:
                 pct = float(percent)
@@ -1619,6 +1630,7 @@ class ScanPanel(ttk.LabelFrame):
             if not self.all_files_var.get():
                 cmd.append("--only-known")
             cmd.append("--progress")
+            cmd.append("--xml-nodes")
             cmd.append("--verbose")
             cmds.append(cmd)
 

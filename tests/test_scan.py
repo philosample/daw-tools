@@ -3,7 +3,7 @@ from __future__ import annotations
 import wave
 from pathlib import Path
 
-from abletools_scan import analyze_audio, parse_ableton_doc, parse_ableton_xml
+from abletools_scan import analyze_audio, iter_ableton_xml_nodes, parse_ableton_doc, parse_ableton_xml
 
 
 def test_parse_ableton_doc_counts() -> None:
@@ -61,3 +61,10 @@ def test_parse_ableton_xml_structured() -> None:
     assert summary["tracks"][0]["name"] == "Track 1"
     assert summary["clips"]
     assert summary["devices"]
+
+
+def test_iter_ableton_xml_nodes() -> None:
+    text = "<Ableton><AudioTrack Name=\"Track 1\"><AudioClip Name=\"Clip A\" /></AudioTrack></Ableton>"
+    nodes = list(iter_ableton_xml_nodes(text))
+    assert nodes
+    assert any(node["tag"] == "AudioTrack" for node in nodes)

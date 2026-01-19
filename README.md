@@ -40,6 +40,7 @@ Outputs (per scope):
 - `file_index_<scope>.jsonl`
 - `ableton_docs_<scope>.jsonl`
 - `ableton_struct_<scope>.jsonl`
+- `ableton_xml_nodes_<scope>.jsonl`
 - `refs_graph_<scope>.jsonl`
 - `scan_state_<scope>.json`
 

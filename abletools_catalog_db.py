@@ -180,6 +180,19 @@ def create_schema(conn: sqlite3.Connection) -> None:
                 meta_json TEXT
             );
 
+            CREATE TABLE IF NOT EXISTS ableton_xml_nodes{suffix} (
+                doc_path TEXT NOT NULL,
+                ord INTEGER NOT NULL,
+                depth INTEGER,
+                tag TEXT,
+                path_tag TEXT,
+                attrs_json TEXT,
+                text TEXT,
+                text_len INTEGER,
+                text_truncated INTEGER,
+                PRIMARY KEY (doc_path, ord)
+            );
+
             CREATE TABLE IF NOT EXISTS doc_sample_refs{suffix} (
                 doc_path TEXT NOT NULL,
                 sample_path TEXT NOT NULL,
@@ -238,6 +251,8 @@ def create_schema(conn: sqlite3.Connection) -> None:
             CREATE INDEX IF NOT EXISTS idx_ableton_clips_doc{suffix} ON ableton_clips{suffix}(doc_path);
             CREATE INDEX IF NOT EXISTS idx_ableton_devices_doc{suffix} ON ableton_devices{suffix}(doc_path);
             CREATE INDEX IF NOT EXISTS idx_ableton_routing_doc{suffix} ON ableton_routing{suffix}(doc_path);
+            CREATE INDEX IF NOT EXISTS idx_ableton_xml_nodes_doc{suffix} ON ableton_xml_nodes{suffix}(doc_path);
+            CREATE INDEX IF NOT EXISTS idx_ableton_xml_nodes_tag{suffix} ON ableton_xml_nodes{suffix}(tag);
             """
         )
 
@@ -743,6 +758,56 @@ def load_ableton_struct(
     set_ingest_offset(conn, source, end_offset)
 
 
+def load_ableton_xml_nodes(
+    conn: sqlite3.Connection, path: Path, incremental: bool, scope: str
+) -> None:
+    if not path.exists():
+        return
+    suffix = scope_suffix(scope)
+    source = f"ableton_xml_nodes{suffix}"
+    start_offset = get_ingest_offset(conn, source) if incremental else 0
+    rows: list[tuple] = []
+
+    def flush() -> None:
+        if not rows:
+            return
+        insert_many(
+            conn,
+            f"""
+            INSERT OR REPLACE INTO ableton_xml_nodes{suffix}
+                (doc_path, ord, depth, tag, path_tag, attrs_json, text, text_len, text_truncated)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            rows,
+        )
+        rows.clear()
+
+    def on_record(rec: dict) -> None:
+        rows.append(
+            (
+                rec.get("path"),
+                rec.get("ord"),
+                rec.get("depth"),
+                rec.get("tag"),
+                rec.get("path_tag"),
+                json.dumps(rec.get("attrs") or {}),
+                rec.get("text"),
+                rec.get("text_len"),
+                1 if rec.get("text_truncated") else 0,
+            )
+        )
+        if len(rows) >= 1000:
+            flush()
+
+    end_offset = (
+        read_jsonl_incremental(path, start_offset, on_record)
+        if incremental
+        else read_jsonl_incremental(path, 0, on_record)
+    )
+    flush()
+    set_ingest_offset(conn, source, end_offset)
+
+
 def load_refs_graph(
     conn: sqlite3.Connection, path: Path, incremental: bool, table: str
 ) -> None:
@@ -942,6 +1007,7 @@ def migrate_catalog(catalog: CatalogPaths, db_path: Path, incremental: bool) -> 
             file_index_path = catalog.root / f"file_index{suffix}.jsonl"
             docs_path = catalog.root / f"ableton_docs{suffix}.jsonl"
             struct_path = catalog.root / f"ableton_struct{suffix}.jsonl"
+            xml_nodes_path = catalog.root / f"ableton_xml_nodes{suffix}.jsonl"
             refs_path = catalog.root / f"refs_graph{suffix}.jsonl"
             scan_state_path = catalog.root / f"scan_state{suffix}.json"
 
@@ -950,6 +1016,7 @@ def migrate_catalog(catalog: CatalogPaths, db_path: Path, incremental: bool) -> 
                 load_file_index(conn, file_index_path, incremental, file_index_table)
                 load_ableton_docs(conn, docs_path, incremental, docs_table)
                 load_ableton_struct(conn, struct_path, incremental, scope)
+                load_ableton_xml_nodes(conn, xml_nodes_path, incremental, scope)
                 load_refs_graph(conn, refs_path, incremental, refs_table)
                 load_scan_state(conn, scan_state_path, scan_state_table)
                 load_audio_analysis(conn, file_index_table, scope)

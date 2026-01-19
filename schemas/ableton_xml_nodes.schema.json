@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "abletools ableton_xml_nodes.jsonl record",
+  "type": "object",
+  "required": ["path", "ext", "kind", "scanned_at", "ord", "tag", "path_tag"],
+  "properties": {
+    "path": {"type": "string"},
+    "ext": {"type": "string"},
+    "kind": {
+      "type": "string",
+      "enum": ["ableton_doc", "ableton_artifact"]
+    },
+    "scanned_at": {"type": "integer"},
+    "ord": {"type": "integer"},
+    "depth": {"type": "integer"},
+    "tag": {"type": "string"},
+    "path_tag": {"type": "string"},
+    "attrs": {"type": "object"},
+    "text": {"type": "string"},
+    "text_len": {"type": "integer"},
+    "text_truncated": {"type": "boolean"}
+  },
+  "additionalProperties": true
+}

@@ -559,6 +559,37 @@ def parse_ableton_xml(text: str) -> dict:
     }
 
 
+def iter_ableton_xml_nodes(text: str, text_limit: int = 2000) -> Iterable[dict]:
+    stack: list[str] = []
+    order = 0
+    for event, elem in ET.iterparse(io.StringIO(text), events=("start", "end")):
+        if event == "start":
+            stack.append(_local_tag(elem.tag))
+            continue
+        tag = _local_tag(elem.tag)
+        path = "/".join(stack)
+        depth = len(stack)
+        attrs = {k: str(v) for k, v in elem.attrib.items()}
+        raw_text = (elem.text or "").strip()
+        text_len = len(raw_text)
+        truncated = False
+        if text_len > text_limit:
+            raw_text = raw_text[:text_limit]
+            truncated = True
+        yield {
+            "ord": order,
+            "tag": tag,
+            "path": path,
+            "depth": depth,
+            "attrs": attrs,
+            "text": raw_text,
+            "text_len": text_len,
+            "text_truncated": truncated,
+        }
+        order += 1
+        stack.pop()
+
+
 def analyze_audio(path: Path, ext: str) -> dict:
     info = {"audio_codec": ext.lstrip(".")}
     try:
@@ -611,6 +642,11 @@ def main(argv: list[str]) -> int:
         help="Emit progress lines with total file counts.",
     )
     ap.add_argument(
+        "--xml-nodes",
+        action="store_true",
+        help="Emit full XML node records for Ableton docs/artifacts.",
+    )
+    ap.add_argument(
         "--include-media",
         action="store_true",
         help="Also index media files (wav/aif/flac/mp3/etc.)",
@@ -657,6 +693,7 @@ def main(argv: list[str]) -> int:
     file_index_path = out_dir / f"file_index{suffix}.jsonl"
     docs_path = out_dir / f"ableton_docs{suffix}.jsonl"
     struct_path = out_dir / f"ableton_struct{suffix}.jsonl"
+    xml_nodes_path = out_dir / f"ableton_xml_nodes{suffix}.jsonl"
     refs_path = out_dir / f"refs_graph{suffix}.jsonl"
     state_path = out_dir / f"scan_state{suffix}.json"
     dir_state_path = out_dir / f"dir_state{suffix}.json"
@@ -686,6 +723,7 @@ def main(argv: list[str]) -> int:
 
     total_files = None
     if args.progress:
+        print("[progress] status=counting")
         total_files = count_files(root, dir_state, args.incremental, all_files, wanted_exts)
         print(f"[progress] total={total_files}")
 
@@ -833,6 +871,27 @@ def main(argv: list[str]) -> int:
                         "routings": struct_payload.get("routings", []),
                     },
                 )
+                if args.xml_nodes and not struct_error:
+                    for node in iter_ableton_xml_nodes(text):
+                        write_jsonl(
+                            xml_nodes_path,
+                            {
+                                "path": rel,
+                                "ext": ext,
+                                "kind": "ableton_doc"
+                                if ext in ABLETON_DOC_EXTS
+                                else "ableton_artifact",
+                                "scanned_at": started,
+                                "ord": node["ord"],
+                                "depth": node["depth"],
+                                "tag": node["tag"],
+                                "path_tag": node["path"],
+                                "attrs": node["attrs"],
+                                "text": node["text"],
+                                "text_len": node["text_len"],
+                                "text_truncated": node["text_truncated"],
+                            },
+                        )
                 parsed_docs += 1
 
                 # Emit reference edges
