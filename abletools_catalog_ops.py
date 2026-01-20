@@ -2,8 +2,13 @@ from __future__ import annotations
 
 import shutil
 from datetime import datetime
+import json
+import sqlite3
 from pathlib import Path
 from typing import Iterable
+
+from abletools_catalog_db import SCOPES, scope_suffix
+from abletools_scan import ABLETON_DOC_EXTS, MEDIA_EXTS
 
 
 def cleanup_catalog_dir(catalog_dir: Path, options: dict[str, bool]) -> tuple[int, int]:
@@ -58,6 +63,73 @@ def cleanup_catalog_dir(catalog_dir: Path, options: dict[str, bool]) -> tuple[in
             for path in catalog_dir.glob(pattern):
                 _remove(path)
 
+    return removed, bytes_freed
+
+
+def prune_file_index_jsonl(catalog_dir: Path) -> tuple[int, int]:
+    removed = 0
+    bytes_freed = 0
+    allowed_exts = ABLETON_DOC_EXTS | MEDIA_EXTS
+    for path in catalog_dir.glob("file_index*.jsonl"):
+        if not path.exists():
+            continue
+        before_size = path.stat().st_size
+        tmp_path = path.with_suffix(path.suffix + ".tmp")
+        kept_lines = 0
+        removed_lines = 0
+        with path.open("r", encoding="utf-8") as src, tmp_path.open(
+            "w", encoding="utf-8"
+        ) as dst:
+            for line in src:
+                stripped = line.strip()
+                if not stripped:
+                    continue
+                try:
+                    rec = json.loads(stripped)
+                except json.JSONDecodeError:
+                    dst.write(line)
+                    kept_lines += 1
+                    continue
+                ext = str(rec.get("ext") or "").lower()
+                if ext in allowed_exts:
+                    dst.write(line)
+                    kept_lines += 1
+                else:
+                    removed_lines += 1
+        tmp_path.replace(path)
+        removed += removed_lines
+        after_size = path.stat().st_size
+        bytes_freed += max(0, before_size - after_size)
+    return removed, bytes_freed
+
+
+def prune_db_file_index(db_path: Path) -> tuple[int, int]:
+    removed = 0
+    bytes_freed = 0
+    allowed_exts = sorted(ABLETON_DOC_EXTS | MEDIA_EXTS)
+    if not db_path.exists():
+        return removed, bytes_freed
+    conn = sqlite3.connect(db_path)
+    try:
+        for scope in SCOPES:
+            suffix = scope_suffix(scope)
+            table = f"file_index{suffix}"
+            placeholders = ",".join("?" for _ in allowed_exts)
+            cur = conn.execute(
+                f"SELECT COUNT(*) FROM {table} WHERE ext NOT IN ({placeholders})",
+                allowed_exts,
+            )
+            row = cur.fetchone()
+            to_remove = int(row[0]) if row else 0
+            if to_remove:
+                conn.execute(
+                    f"DELETE FROM {table} WHERE ext NOT IN ({placeholders})",
+                    allowed_exts,
+                )
+            removed += to_remove
+        conn.commit()
+    finally:
+        conn.close()
     return removed, bytes_freed
 
 

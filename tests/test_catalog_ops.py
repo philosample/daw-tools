@@ -1,8 +1,15 @@
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 
-from abletools_catalog_ops import backup_files, cleanup_catalog_dir
+from abletools_catalog_db import create_schema
+from abletools_catalog_ops import (
+    backup_files,
+    cleanup_catalog_dir,
+    prune_db_file_index,
+    prune_file_index_jsonl,
+)
 
 
 def test_cleanup_catalog_dir(tmp_path: Path) -> None:
@@ -55,3 +62,53 @@ def test_backup_files_zips_and_cleans(tmp_path: Path) -> None:
     assert archive.exists()
     folder = dest / "Abletools Backup" / "sets_20260101_000000"
     assert not folder.exists()
+
+
+def test_prune_file_index_jsonl(tmp_path: Path) -> None:
+    catalog = tmp_path / ".abletools_catalog"
+    catalog.mkdir()
+    path = catalog / "file_index.jsonl"
+    path.write_text(
+        "\n".join(
+            [
+                "{\"path\": \"a.als\", \"ext\": \".als\"}",
+                "{\"path\": \"b.wav\", \"ext\": \".wav\"}",
+                "{\"path\": \"c.txt\", \"ext\": \".txt\"}",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    removed, freed = prune_file_index_jsonl(catalog)
+    assert removed == 1
+    assert freed >= 0
+    contents = path.read_text(encoding="utf-8")
+    assert "\"a.als\"" in contents
+    assert "\"b.wav\"" in contents
+    assert "\"c.txt\"" not in contents
+
+
+def test_prune_db_file_index(tmp_path: Path) -> None:
+    db_path = tmp_path / "catalog.sqlite"
+    conn = sqlite3.connect(db_path)
+    try:
+        create_schema(conn)
+        conn.execute(
+            "INSERT INTO file_index (path, ext, size, mtime, kind, scanned_at) "
+            "VALUES ('/tmp/a.als', '.als', 1, 1, 'ableton_doc', 1)"
+        )
+        conn.execute(
+            "INSERT INTO file_index (path, ext, size, mtime, kind, scanned_at) "
+            "VALUES ('/tmp/b.txt', '.txt', 1, 1, 'other', 1)"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    removed, _ = prune_db_file_index(db_path)
+    assert removed == 1
+    conn = sqlite3.connect(db_path)
+    try:
+        count = conn.execute("SELECT COUNT(*) FROM file_index").fetchone()[0]
+    finally:
+        conn.close()
+    assert count == 1

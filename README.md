@@ -110,7 +110,7 @@ python abletools_schema_validate.py ./.abletools_catalog
 python abletools_schema_validate.py ./.abletools_catalog --incremental
 
 # Clean catalog bloat via UI (Dashboard -> Clean Catalog)
-# Optional: rebuild DB after cleanup from remaining JSONL
+# Optional: prune non-set/audio file_index entries and rebuild DB after cleanup
 
 # Targeted tests (detect changes and run matching tests)
 ./scripts/ci_run_targeted.sh

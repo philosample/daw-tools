@@ -15,6 +15,7 @@
   - caching behavior for `prefs_cache.json`.
 - `abletools_catalog_ops.py`
   - cleanup + backup operations with temp fixtures.
+  - prune file_index JSONL and DB rows (sets + audio only).
 - `abletools_analytics.py`
   - set health + audio footprint metrics.
   - missing ref hotspots and device chain fingerprints.

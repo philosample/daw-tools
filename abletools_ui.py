@@ -21,7 +21,12 @@ import tkinter as tk
 import tkinter.font as tkfont
 from tkinter import filedialog, messagebox, ttk
 
-from abletools_catalog_ops import backup_files, cleanup_catalog_dir
+from abletools_catalog_ops import (
+    backup_files,
+    cleanup_catalog_dir,
+    prune_db_file_index,
+    prune_file_index_jsonl,
+)
 from abletools_prefs import get_key_paths, get_preferences_folder, get_scan_root, set_scan_root, suggest_scan_root
 from ramify_core import iter_targets, process_file
 
@@ -151,6 +156,163 @@ def is_backup_path(path: str) -> bool:
     if any(part.lower() == "backup" for part in p.parts):
         return True
     return bool(_TIMESTAMP_BRACKET_RE.search(p.name))
+
+
+def select_set_paths_dialog(
+    parent: tk.Widget,
+    app: "AbletoolsUI",
+    title: str,
+    scope: str,
+    include_backups_var: tk.BooleanVar | None = None,
+    preselected: list[Path] | None = None,
+) -> tuple[list[Path], list[str]]:
+    dialog = tk.Toplevel(parent)
+    dialog.title(title)
+    dialog.configure(bg=BG)
+    dialog.geometry("980x640")
+    dialog.transient(parent)
+
+    header = tk.Frame(dialog, bg=BG)
+    header.pack(fill="x", padx=12, pady=(12, 6))
+    tk.Label(header, text="Search: ", bg=BG, fg=TEXT).pack(side="left")
+    search_var = tk.StringVar(value="")
+    search_entry = tk.Entry(header, textvariable=search_var, width=40)
+    search_entry.pack(side="left", padx=(0, 12))
+    ignore_default = True
+    if include_backups_var is not None:
+        ignore_default = not include_backups_var.get()
+    ignore_backups_var = tk.BooleanVar(value=ignore_default)
+    ttk.Checkbutton(
+        header,
+        text="Ignore backups",
+        variable=ignore_backups_var,
+        style="Ghost.TButton",
+    ).pack(side="right")
+
+    body = tk.Frame(dialog, bg=BG)
+    body.pack(fill="both", expand=True, padx=12, pady=(0, 12))
+    body.columnconfigure(0, weight=1)
+    body.rowconfigure(0, weight=1)
+
+    columns = ("name", "path", "mtime", "tracks", "clips")
+    tree = ttk.Treeview(body, columns=columns, show="headings", selectmode="extended")
+    for col in columns:
+        heading = col.replace("_", " ").title()
+        tree.heading(col, text=heading)
+        tree.column(col, anchor="w")
+    tree.column("name", width=220)
+    tree.column("path", width=420)
+    tree.column("mtime", width=140)
+    tree.column("tracks", width=70, anchor="center")
+    tree.column("clips", width=70, anchor="center")
+    tree.grid(row=0, column=0, sticky="nsew")
+    scroll = tk.Scrollbar(body, command=tree.yview)
+    tree.configure(yscrollcommand=scroll.set)
+    scroll.grid(row=0, column=1, sticky="ns")
+
+    if scope == "all":
+        scope = "live_recordings"
+    sets = app.get_known_sets(scope)
+    if not sets:
+        messagebox.showinfo("Select Sets", "No sets found yet. Run a full scan first.")
+        dialog.destroy()
+        return ([], [])
+
+    rows: list[tuple[str, dict[str, str]]] = []
+    sorted_sets = sorted(
+        sets,
+        key=lambda item: (
+            -int(item.get("mtime") or 0),
+            str(item.get("name", "")).lower(),
+        ),
+    )
+    for item in sorted_sets:
+        if ignore_backups_var.get() and is_backup_path(str(item.get("path", ""))):
+            continue
+        rows.append(
+            (
+                tree.insert(
+                    "",
+                    "end",
+                    values=(
+                        item.get("name", ""),
+                        item.get("path", ""),
+                        format_mtime(item.get("mtime")),
+                        item.get("tracks", ""),
+                        item.get("clips", ""),
+                    ),
+                ),
+                item,
+            )
+        )
+
+    if preselected:
+        selected_paths = {str(path) for path in preselected}
+        for iid, meta in rows:
+            if str(meta.get("path", "")) in selected_paths:
+                tree.selection_add(iid)
+
+    def _apply_filter(_event: object | None = None) -> None:
+        query = search_var.get().strip().lower()
+        for iid, meta in rows:
+            hay = f"{meta.get('name','')} {meta.get('path','')}".lower()
+            if (ignore_backups_var.get() and is_backup_path(str(meta.get("path", "")))) or (
+                query and query not in hay
+            ):
+                tree.detach(iid)
+            else:
+                tree.reattach(iid, "", "end")
+
+    search_entry.bind("<KeyRelease>", _apply_filter)
+    ignore_backups_var.trace_add("write", _apply_filter)
+
+    if include_backups_var is not None:
+        def _sync_ignore_backups(*_args: object) -> None:
+            ignore_backups_var.set(not include_backups_var.get())
+
+        include_backups_var.trace_add("write", _sync_ignore_backups)
+
+    result: dict[str, list[Path] | None] = {"paths": None}
+    names: list[str] = []
+
+    def _apply() -> None:
+        picks = tree.selection()
+        if not picks:
+            messagebox.showinfo("Select Sets", "Select one or more sets.")
+            return
+        selected_paths: list[Path] = []
+        selected_names: list[str] = []
+        for iid in picks:
+            values = tree.item(iid, "values")
+            path = values[1]
+            if path:
+                selected_paths.append(Path(path))
+            name = str(values[0])
+            lowered = name.lower()
+            if lowered.endswith(".als") or lowered.endswith(".alc"):
+                name = name[:-4]
+            if name:
+                selected_names.append(name)
+        result["paths"] = selected_paths
+        names.extend(selected_names)
+        dialog.destroy()
+
+    def _cancel() -> None:
+        dialog.destroy()
+
+    footer = tk.Frame(dialog, bg=BG)
+    footer.pack(fill="x", padx=12, pady=(0, 12))
+    ttk.Button(footer, text="Use Selected", command=_apply, style="Accent.TButton").pack(
+        side="left"
+    )
+    ttk.Button(footer, text="Cancel", command=_cancel, style="Ghost.TButton").pack(
+        side="left", padx=(8, 0)
+    )
+
+    dialog.grab_set()
+    parent.winfo_toplevel().wait_window(dialog)
+
+    return (result["paths"] or [], names)
 
 
 class AnimatedGif:
@@ -494,6 +656,9 @@ class DashboardPanel(tk.Frame):
             "refs_graph": _opt("Refs graph JSONL", False),
             "struct": _opt("Struct/clip/routing JSONL", False),
             "scan_state": _opt("Scan + dir state (incremental cache)", False),
+            "prune_sets_audio": _opt(
+                "Prune non-set/audio file_index entries (JSONL + DB)", True
+            ),
         }
         optimize_var = _opt("Optimize DB after cleanup (ANALYZE + VACUUM)", True)
         rebuild_var = _opt("Rebuild DB from remaining JSONL (overwrite)", False)
@@ -508,18 +673,43 @@ class DashboardPanel(tk.Frame):
 
             def worker() -> None:
                 removed, bytes_freed = self.app.cleanup_catalog(selected)
+                pruned_files = 0
+                pruned_bytes = 0
+                pruned_rows = 0
                 maintenance_msg = ""
-                if do_rebuild:
+                if selected.get("prune_sets_audio"):
+                    pruned_files, pruned_bytes = prune_file_index_jsonl(
+                        self.app.catalog_dir()
+                    )
+                    bytes_freed += pruned_bytes
+                    if do_rebuild:
+                        ok, msg = self.app.rebuild_catalog_db()
+                        maintenance_msg = (
+                            " Rebuilt DB." if ok else f" Rebuild failed: {msg}"
+                        )
+                    else:
+                        db_path = self.app.resolve_catalog_db_path()
+                        if db_path and db_path.exists():
+                            pruned_rows, _ = prune_db_file_index(db_path)
+                elif do_rebuild:
                     ok, msg = self.app.rebuild_catalog_db()
                     maintenance_msg = " Rebuilt DB." if ok else f" Rebuild failed: {msg}"
                 elif do_optimize:
                     ok, msg = self.app.optimize_catalog_db()
                     maintenance_msg = " Optimized DB." if ok else f" Optimize failed: {msg}"
+                prune_msg = ""
+                if pruned_files or pruned_rows:
+                    prune_msg = (
+                        f" Pruned {pruned_files} file_index lines"
+                        f"{' and ' if pruned_files and pruned_rows else ''}"
+                        f"{f'{pruned_rows} DB rows' if pruned_rows else ''}."
+                    )
                 self.after(
                     0,
                     lambda: messagebox.showinfo(
                         "Clean Catalog",
-                        f"Removed {removed} files, freed {format_bytes(bytes_freed)}.{maintenance_msg}",
+                        f"Removed {removed} files, freed {format_bytes(bytes_freed)}."
+                        f"{prune_msg}{maintenance_msg}",
                     ),
                 )
                 self.after(0, dialog.destroy)
@@ -530,12 +720,20 @@ class DashboardPanel(tk.Frame):
         def _cancel() -> None:
             dialog.destroy()
 
-        ttk.Button(footer, text="Clean", command=_run, style="Accent.TButton").pack(
-            side="left"
-        )
-        ttk.Button(footer, text="Cancel", command=_cancel, style="Ghost.TButton").pack(
-            side="left", padx=(8, 0)
-        )
+        ttk.Button(
+            footer,
+            text="Clean",
+            command=_run,
+            style="Accent.TButton",
+            width=10,
+        ).pack(side="left")
+        ttk.Button(
+            footer,
+            text="Cancel",
+            command=_cancel,
+            style="Ghost.TButton",
+            width=10,
+        ).pack(side="left", padx=(8, 0))
 
         dialog.grab_set()
         self.wait_window(dialog)
@@ -1505,7 +1703,7 @@ class CatalogPanel(tk.Frame):
 
 class ScanPanel(ttk.LabelFrame):
     def __init__(self, master: tk.Misc, app: "AbletoolsUI") -> None:
-        super().__init__(master, text="Scan & Catalog", padding=10)
+        super().__init__(master, text="Scan & Catalog", padding=10, style="Panel.TLabelframe")
         self.app = app
 
         self.root_var = tk.StringVar(value=str(self.app.default_scan_root()))
@@ -1523,6 +1721,7 @@ class ScanPanel(ttk.LabelFrame):
         self.deep_snapshot_var = tk.BooleanVar(value=False)
         self.xml_nodes_var = tk.BooleanVar(value=False)
         self.log_visible = tk.BooleanVar(value=True)
+        self.presets_focus_var = tk.BooleanVar(value=False)
         self.targeted_paths: list[Path] = []
         self.targeted_struct_var = tk.BooleanVar(value=True)
         self.targeted_clips_var = tk.BooleanVar(value=True)
@@ -1539,12 +1738,16 @@ class ScanPanel(ttk.LabelFrame):
         self._pump_queue()
 
     def _build_ui(self) -> None:
-        header = ttk.Frame(self)
+        header = ttk.Frame(self, style="Panel.TFrame")
         header.grid(row=0, column=0, columnspan=3, sticky="we", pady=(0, 6))
         header.columnconfigure(1, weight=1)
 
-        ttk.Label(header, text="Root folder:").grid(row=0, column=0, sticky="w")
-        self.root_entry = ttk.Entry(header, textvariable=self.root_var, width=60)
+        ttk.Label(header, text="Root folder:", style="Panel.TLabel").grid(
+            row=0, column=0, sticky="w"
+        )
+        self.root_entry = ttk.Entry(
+            header, textvariable=self.root_var, width=60, style="Panel.TEntry"
+        )
         self.root_entry.grid(row=0, column=1, sticky="we", padx=(8, 8))
         ttk.Button(header, text="Browse...", command=self._browse, style="Ghost.TButton").grid(
             row=0, column=2, sticky="e"
@@ -1552,87 +1755,116 @@ class ScanPanel(ttk.LabelFrame):
 
         self.gif = AnimatedGif(tk.Label(header), Path(), delay_ms=80)
 
-        opts = ttk.Frame(self)
+        opts = ttk.Frame(self, style="Panel.TFrame")
         opts.grid(row=1, column=0, columnspan=3, sticky="w", pady=(6, 0))
 
-        ttk.Label(opts, text="Scope:").grid(row=0, column=0, sticky="w", padx=(0, 6))
+        ttk.Label(opts, text="Scope:", style="Panel.TLabel").grid(
+            row=0, column=0, sticky="w", padx=(0, 6)
+        )
         scope_menu = ttk.Combobox(
             opts,
             textvariable=self.scope_var,
             values=["live_recordings", "user_library", "preferences", "all"],
             state="readonly",
             width=16,
+            style="Panel.TCombobox",
         )
         scope_menu.grid(row=0, column=1, sticky="w", padx=(0, 14))
         scope_menu.bind("<<ComboboxSelected>>", self._on_scope_change)
 
-        full_frame = ttk.LabelFrame(opts, text="Full Scan (fast)", padding=10)
+        self.presets_focus_btn = ttk.Checkbutton(
+            opts,
+            text="Presets-focused (User Library)",
+            variable=self.presets_focus_var,
+            style="Panel.TCheckbutton",
+            command=self._apply_presets_focus,
+        )
+        self.presets_focus_btn.grid(row=0, column=2, sticky="w", padx=(0, 14))
+
+        full_frame = ttk.LabelFrame(
+            opts, text="Full Scan (fast)", padding=10, style="Panel.TLabelframe"
+        )
         full_frame.grid(row=1, column=0, columnspan=8, sticky="we", pady=(10, 0))
 
         ttk.Label(
             full_frame,
             text="Summary + hashes only. No detailed tags or per-set JSON.",
             foreground=MUTED,
+            style="Panel.TLabel",
         ).grid(row=0, column=0, columnspan=8, sticky="w", pady=(0, 6))
 
         ttk.Checkbutton(
             full_frame,
             text="Incremental (skip unchanged)",
             variable=self.incremental_var,
+            style="Panel.TCheckbutton",
         ).grid(row=1, column=0, sticky="w", padx=(0, 14))
-        ttk.Checkbutton(
+        self.include_media_btn = ttk.Checkbutton(
             full_frame,
             text="Include media files",
             variable=self.include_media_var,
-        ).grid(row=1, column=1, sticky="w", padx=(0, 14))
+            style="Panel.TCheckbutton",
+        )
+        self.include_media_btn.grid(row=1, column=1, sticky="w", padx=(0, 14))
         ttk.Checkbutton(
             full_frame,
             text="Compute hashes (slow)",
             variable=self.hash_var,
+            style="Panel.TCheckbutton",
         ).grid(row=1, column=2, sticky="w")
         ttk.Checkbutton(
             full_frame,
             text="Rehash unchanged",
             variable=self.rehash_var,
+            style="Panel.TCheckbutton",
         ).grid(row=1, column=3, sticky="w", padx=(14, 0))
         ttk.Checkbutton(
             full_frame,
             text="Analyze audio",
             variable=self.analyze_audio_var,
+            style="Panel.TCheckbutton",
         ).grid(row=1, column=4, sticky="w", padx=(14, 0))
 
         ttk.Checkbutton(
             full_frame,
             text="Hash Ableton sets only",
             variable=self.hash_docs_var,
+            style="Panel.TCheckbutton",
         ).grid(row=2, column=0, sticky="w", padx=(0, 14), pady=(6, 0))
         ttk.Checkbutton(
             full_frame,
             text="Changed-only scan",
             variable=self.changed_only_var,
+            style="Panel.TCheckbutton",
         ).grid(row=2, column=1, sticky="w", padx=(0, 14), pady=(6, 0))
         ttk.Checkbutton(
             full_frame,
             text="Write checkpoints",
             variable=self.checkpoint_var,
+            style="Panel.TCheckbutton",
         ).grid(row=2, column=2, sticky="w", padx=(0, 14), pady=(6, 0))
         ttk.Checkbutton(
             full_frame,
             text="Resume checkpoint",
             variable=self.resume_var,
+            style="Panel.TCheckbutton",
         ).grid(row=2, column=3, sticky="w", padx=(0, 14), pady=(6, 0))
         ttk.Checkbutton(
             full_frame,
             text="Include Backup folders",
             variable=self.include_backups_var,
+            style="Panel.TCheckbutton",
         ).grid(row=2, column=4, sticky="w", padx=(0, 14), pady=(6, 0))
 
-        targeted_frame = ttk.LabelFrame(opts, text="Targeted Scan (deep)", padding=10)
+        targeted_frame = ttk.LabelFrame(
+            opts, text="Targeted Scan (deep)", padding=10, style="Panel.TLabelframe"
+        )
         targeted_frame.grid(row=2, column=0, columnspan=8, sticky="we", pady=(12, 0))
         ttk.Label(
             targeted_frame,
             text="Run on selected sets only. Writes per-set JSON and detailed tags.",
             foreground=MUTED,
+            style="Panel.TLabel",
         ).grid(row=0, column=0, columnspan=6, sticky="w", pady=(0, 6))
 
         ttk.Button(
@@ -1645,47 +1877,57 @@ class ScanPanel(ttk.LabelFrame):
             targeted_frame,
             textvariable=self.targeted_summary_var,
             foreground=MUTED,
+            style="Panel.TLabel",
         ).grid(row=1, column=1, columnspan=5, sticky="w")
 
-        ttk.Label(targeted_frame, text="Details:").grid(row=2, column=0, sticky="w", pady=(6, 0))
+        ttk.Label(targeted_frame, text="Details:", style="Panel.TLabel").grid(
+            row=2, column=0, sticky="w", pady=(6, 0)
+        )
         ttk.Checkbutton(
             targeted_frame,
             text="Struct",
             variable=self.targeted_struct_var,
+            style="Panel.TCheckbutton",
         ).grid(row=2, column=1, sticky="w", pady=(6, 0))
         ttk.Checkbutton(
             targeted_frame,
             text="Clips",
             variable=self.targeted_clips_var,
+            style="Panel.TCheckbutton",
         ).grid(row=2, column=2, sticky="w", pady=(6, 0))
         ttk.Checkbutton(
             targeted_frame,
             text="Devices",
             variable=self.targeted_devices_var,
+            style="Panel.TCheckbutton",
         ).grid(row=2, column=3, sticky="w", pady=(6, 0))
         ttk.Checkbutton(
             targeted_frame,
             text="Routing",
             variable=self.targeted_routing_var,
+            style="Panel.TCheckbutton",
         ).grid(row=2, column=4, sticky="w", pady=(6, 0))
         ttk.Checkbutton(
             targeted_frame,
             text="Refs",
             variable=self.targeted_refs_var,
+            style="Panel.TCheckbutton",
         ).grid(row=2, column=5, sticky="w", pady=(6, 0))
 
         ttk.Checkbutton(
             targeted_frame,
             text="Deep XML snapshot",
             variable=self.deep_snapshot_var,
+            style="Panel.TCheckbutton",
         ).grid(row=3, column=1, sticky="w", padx=(0, 14), pady=(6, 0))
         ttk.Checkbutton(
             targeted_frame,
             text="XML nodes (huge)",
             variable=self.xml_nodes_var,
+            style="Panel.TCheckbutton",
         ).grid(row=3, column=2, sticky="w", padx=(0, 14), pady=(6, 0))
 
-        btns = ttk.Frame(self)
+        btns = ttk.Frame(self, style="Panel.TFrame")
         btns.grid(row=2, column=0, columnspan=3, sticky="we", pady=(10, 0))
 
         self.start_btn = ttk.Button(
@@ -1711,9 +1953,13 @@ class ScanPanel(ttk.LabelFrame):
         self.cancel_btn.pack(side="left", padx=(8, 0))
 
         self.status_var = tk.StringVar(value="Idle")
-        ttk.Label(btns, textvariable=self.status_var).pack(side="left", padx=(12, 0))
+        ttk.Label(btns, textvariable=self.status_var, style="Panel.TLabel").pack(
+            side="left", padx=(12, 0)
+        )
 
-        self.progress = ttk.Progressbar(btns, mode="indeterminate", length=200)
+        self.progress = ttk.Progressbar(
+            btns, mode="indeterminate", length=200, style="Panel.Horizontal.TProgressbar"
+        )
         self.progress.pack(side="left", padx=(12, 0))
 
         self.log_toggle = ttk.Button(
@@ -1789,6 +2035,7 @@ class ScanPanel(ttk.LabelFrame):
         self._matrix_cols = 20
         self._progress_total: Optional[int] = None
         self.set_log_visible(True)
+        self._apply_presets_focus()
 
     def _toggle_log(self) -> None:
         if self.log_visible.get():
@@ -1877,159 +2124,46 @@ class ScanPanel(ttk.LabelFrame):
             root = self.app.default_scan_root()
         if root:
             self.root_var.set(str(root))
+        self._apply_presets_focus()
+
+    def _apply_presets_focus(self) -> None:
+        scope = self.scope_var.get()
+        if scope != "user_library":
+            if self.presets_focus_var.get():
+                self.presets_focus_var.set(False)
+            if hasattr(self, "presets_focus_btn"):
+                self.presets_focus_btn.configure(state="disabled")
+            if hasattr(self, "include_media_btn"):
+                self.include_media_btn.configure(state="normal")
+            return
+        if hasattr(self, "presets_focus_btn"):
+            self.presets_focus_btn.configure(state="normal")
+        if self.presets_focus_var.get():
+            self.include_media_var.set(False)
+            if hasattr(self, "include_media_btn"):
+                self.include_media_btn.configure(state="disabled")
+        else:
+            if hasattr(self, "include_media_btn"):
+                self.include_media_btn.configure(state="normal")
 
     def _select_targeted_sets(self) -> None:
-        dialog = tk.Toplevel(self)
-        dialog.title("Select Sets for Targeted Scan")
-        dialog.configure(bg=BG)
-        dialog.geometry("980x640")
-        dialog.transient(self)
-
-        header = tk.Frame(dialog, bg=BG)
-        header.pack(fill="x", padx=12, pady=(12, 6))
-        tk.Label(header, text="Search: ", bg=BG, fg=TEXT).pack(side="left")
-        search_var = tk.StringVar(value="")
-        search_entry = tk.Entry(header, textvariable=search_var, width=40)
-        search_entry.pack(side="left", padx=(0, 12))
-        ignore_backups_var = tk.BooleanVar(value=not self.include_backups_var.get())
-        ttk.Checkbutton(
-            header,
-            text="Ignore backups",
-            variable=ignore_backups_var,
-            style="Ghost.TButton",
-        ).pack(side="right")
-
-        body = tk.Frame(dialog, bg=BG)
-        body.pack(fill="both", expand=True, padx=12, pady=(0, 12))
-        body.columnconfigure(0, weight=1)
-        body.rowconfigure(0, weight=1)
-
-        columns = ("name", "path", "mtime", "tracks", "clips")
-        tree = ttk.Treeview(body, columns=columns, show="headings", selectmode="extended")
-        for col in columns:
-            heading = col.replace("_", " ").title()
-            tree.heading(col, text=heading)
-            tree.column(col, anchor="w")
-        tree.column("name", width=220)
-        tree.column("path", width=420)
-        tree.column("mtime", width=140)
-        tree.column("tracks", width=70, anchor="center")
-        tree.column("clips", width=70, anchor="center")
-        tree.grid(row=0, column=0, sticky="nsew")
-        scroll = tk.Scrollbar(body, command=tree.yview)
-        tree.configure(yscrollcommand=scroll.set)
-        scroll.grid(row=0, column=1, sticky="ns")
-
         scope = self.scope_var.get()
-        if scope == "all":
-            scope = "live_recordings"
-        sets = self.app.get_known_sets(scope)
-        if not sets:
-            messagebox.showinfo(
-                "Targeted Scan",
-                "No sets found yet. Run a full scan first.",
-            )
-            dialog.destroy()
-            return
-        rows: list[tuple[str, dict[str, str]]] = []
-        sorted_sets = sorted(
-            sets,
-            key=lambda item: (
-                -int(item.get("mtime") or 0),
-                str(item.get("name", "")).lower(),
-            ),
+        selected_paths, selected_names = select_set_paths_dialog(
+            self,
+            self.app,
+            "Select Sets for Targeted Scan",
+            scope,
+            include_backups_var=self.include_backups_var,
+            preselected=self.targeted_paths,
         )
-        for item in sorted_sets:
-            if ignore_backups_var.get() and is_backup_path(str(item.get("path", ""))):
-                continue
-            rows.append(
-                (
-                    tree.insert(
-                        "",
-                        "end",
-                        values=(
-                            item.get("name", ""),
-                            item.get("path", ""),
-                            format_mtime(item.get("mtime")),
-                            item.get("tracks", ""),
-                            item.get("clips", ""),
-                        ),
-                    ),
-                    item,
-                )
-            )
-
-        if self.targeted_paths:
-            selected_paths = {str(path) for path in self.targeted_paths}
-            for iid, meta in rows:
-                if str(meta.get("path", "")) in selected_paths:
-                    tree.selection_add(iid)
-
-        def _apply_filter(_event: object | None = None) -> None:
-            query = search_var.get().strip().lower()
-            for iid, meta in rows:
-                hay = f"{meta.get('name','')} {meta.get('path','')}".lower()
-                if (ignore_backups_var.get() and is_backup_path(str(meta.get("path", "")))) or (
-                    query and query not in hay
-                ):
-                    tree.detach(iid)
-                else:
-                    tree.reattach(iid, "", "end")
-
-        search_entry.bind("<KeyRelease>", _apply_filter)
-        ignore_backups_var.trace_add("write", _apply_filter)
-
-        def _sync_ignore_backups(*_args: object) -> None:
-            ignore_backups_var.set(not self.include_backups_var.get())
-
-        self.include_backups_var.trace_add("write", _sync_ignore_backups)
-
-        result: dict[str, Optional[list[Path]]] = {"paths": None}
-
-        def _apply() -> None:
-            picks = tree.selection()
-            if not picks:
-                messagebox.showinfo("Targeted Scan", "Select one or more sets.")
-                return
-            selected_paths: list[Path] = []
-            selected_names: list[str] = []
-            for iid in picks:
-                values = tree.item(iid, "values")
-                path = values[1]
-                if path:
-                    selected_paths.append(Path(path))
-                name = str(values[0])
-                lowered = name.lower()
-                if lowered.endswith(".als") or lowered.endswith(".alc"):
-                    name = name[:-4]
-                if name:
-                    selected_names.append(name)
-            result["paths"] = selected_paths
+        if selected_paths:
+            self.targeted_paths = selected_paths
+            self.targeted_summary_var.set(f"{len(self.targeted_paths)} set(s) selected.")
             if selected_names:
                 preview = ", ".join(selected_names[:6])
                 if len(selected_names) > 6:
                     preview += f" …(+{len(selected_names) - 6})"
                 self._enqueue(f"Targeted sets selected ({len(selected_names)}): {preview}")
-            dialog.destroy()
-
-        def _cancel() -> None:
-            dialog.destroy()
-
-        footer = tk.Frame(dialog, bg=BG)
-        footer.pack(fill="x", padx=12, pady=(0, 12))
-        ttk.Button(footer, text="Use Selected", command=_apply, style="Accent.TButton").pack(
-            side="left"
-        )
-        ttk.Button(footer, text="Cancel", command=_cancel, style="Ghost.TButton").pack(
-            side="left", padx=(8, 0)
-        )
-
-        dialog.grab_set()
-        self.wait_window(dialog)
-
-        if result["paths"]:
-            self.targeted_paths = result["paths"] or []
-            self.targeted_summary_var.set(f"{len(self.targeted_paths)} set(s) selected.")
 
     def _append_log(self, line: str) -> None:
         self._handle_progress_line(line)
@@ -2411,12 +2545,15 @@ class ScanView(tk.Frame):
 
 
 class RamifyPanel(tk.Frame):
-    def __init__(self, master: tk.Misc) -> None:
+    def __init__(self, master: tk.Misc, app: "AbletoolsUI") -> None:
         super().__init__(master, bg=BG)
+        self.app = app
         self.path_var = tk.StringVar(value="")
         self.dry_var = tk.BooleanVar(value=True)
         self.inplace_var = tk.BooleanVar(value=True)
         self.rec_var = tk.BooleanVar(value=False)
+        self.selected_paths: list[Path] = []
+        self.selected_summary_var = tk.StringVar(value="No sets selected.")
         self._build()
 
     def _build(self) -> None:
@@ -2478,16 +2615,24 @@ class RamifyPanel(tk.Frame):
 
         ttk.Button(
             target_row,
-            text="Choose File",
-            command=self.choose_file,
-            style="Accent.TButton",
-        ).pack(side="left", padx=(8, 0))
-        ttk.Button(
-            target_row,
             text="Choose Folder",
             command=self.choose_folder,
             style="Ghost.TButton",
         ).pack(side="left", padx=(8, 0))
+        ttk.Button(
+            target_row,
+            text="Select Sets",
+            command=self.choose_sets,
+            style="Ghost.TButton",
+        ).pack(side="left", padx=(8, 0))
+
+        tk.Label(
+            card,
+            textvariable=self.selected_summary_var,
+            font=BODY_FONT,
+            fg=MUTED,
+            bg=PANEL,
+        ).pack(anchor="w", padx=16, pady=(4, 0))
 
         opts = tk.Frame(card, bg=PANEL)
         opts.pack(fill="x", padx=16, pady=(6, 0))
@@ -2559,31 +2704,50 @@ class RamifyPanel(tk.Frame):
     def clear_log(self) -> None:
         self.log.delete("1.0", "end")
 
-    def choose_file(self) -> None:
-        p = filedialog.askopenfilename(
-            title="Choose Ableton set/clip",
-            filetypes=[("Ableton Live", "*.als *.alc"), ("All files", "*.*")],
-        )
-        if p:
-            self.path_var.set(p)
-
     def choose_folder(self) -> None:
         p = filedialog.askdirectory(title="Choose folder containing .als/.alc files")
         if p:
             self.path_var.set(p)
+            self.selected_paths = []
+            self.selected_summary_var.set("No sets selected.")
+
+    def choose_sets(self) -> None:
+        scope = self.app.current_scope or "live_recordings"
+        selected_paths, selected_names = select_set_paths_dialog(
+            self,
+            self.app,
+            "Select Sets for RAMify",
+            scope,
+            include_backups_var=None,
+            preselected=self.selected_paths,
+        )
+        if selected_paths:
+            self.selected_paths = selected_paths
+            self.selected_summary_var.set(f"{len(self.selected_paths)} set(s) selected.")
+            self.path_var.set("")
+            if selected_names:
+                preview = ", ".join(selected_names[:6])
+                if len(selected_names) > 6:
+                    preview += f" …(+{len(selected_names) - 6})"
+                self._log(f"Selected sets ({len(selected_names)}): {preview}")
 
     def run_clicked(self) -> None:
-        p = self.path_var.get().strip()
-        if not p:
-            messagebox.showerror(
-                "Missing target", "Choose a .als/.alc file or a folder first."
-            )
-            return
-
-        target = Path(p).expanduser()
-        if not target.exists():
-            messagebox.showerror("Not found", str(target))
-            return
+        targets: list[Path] = []
+        if self.selected_paths:
+            targets = list(self.selected_paths)
+        else:
+            p = self.path_var.get().strip()
+            if not p:
+                messagebox.showerror(
+                    "Missing target",
+                    "Choose a folder or select sets from the catalog.",
+                )
+                return
+            target = Path(p).expanduser()
+            if not target.exists():
+                messagebox.showerror("Not found", str(target))
+                return
+            targets = [target]
 
         dry = bool(self.dry_var.get())
         inplace = bool(self.inplace_var.get())
@@ -2595,35 +2759,43 @@ class RamifyPanel(tk.Frame):
         self.ram_gif.start()
         self._log("")
         self._log(f"=== Running: {mode} ===")
-        self._log(f"Target: {target}")
+        if len(targets) == 1:
+            self._log(f"Target: {targets[0]}")
+        else:
+            self._log(f"Targets: {len(targets)} selected sets")
         self._log(f"Recursive: {recursive}")
         self._log("")
 
         def worker() -> None:
             try:
                 total_files = total_audio = total_flips = failed = 0
-                for f in iter_targets(target, recursive):
-                    total_files += 1
-                    try:
-                        audio_seen, flips, wrote = process_file(f, inplace, dry)
-                        total_audio += audio_seen
-                        total_flips += flips
-                        action = "DRY" if dry else ("INPLACE" if inplace else "OUT")
-                        if wrote:
-                            self.after(
-                                0,
-                                self._log,
-                                f"[{action}] {f} | AudioClips={audio_seen} | RamFlips={flips} | wrote={wrote}",
-                            )
-                        else:
-                            self.after(
-                                0,
-                                self._log,
-                                f"[{action}] {f} | AudioClips={audio_seen} | RamFlips={flips}",
-                            )
-                    except Exception as e:
-                        failed += 1
-                        self.after(0, self._log, f"[FAIL] {f} | {e}")
+                for target in targets:
+                    if target.is_dir():
+                        iterator = iter_targets(target, recursive)
+                    else:
+                        iterator = [target]
+                    for f in iterator:
+                        total_files += 1
+                        try:
+                            audio_seen, flips, wrote = process_file(f, inplace, dry)
+                            total_audio += audio_seen
+                            total_flips += flips
+                            action = "DRY" if dry else ("INPLACE" if inplace else "OUT")
+                            if wrote:
+                                self.after(
+                                    0,
+                                    self._log,
+                                    f"[{action}] {f} | AudioClips={audio_seen} | RamFlips={flips} | wrote={wrote}",
+                                )
+                            else:
+                                self.after(
+                                    0,
+                                    self._log,
+                                    f"[{action}] {f} | AudioClips={audio_seen} | RamFlips={flips}",
+                                )
+                        except Exception as e:
+                            failed += 1
+                            self.after(0, self._log, f"[FAIL] {f} | {e}")
 
                 self.after(0, self._log, "")
                 self.after(
@@ -2761,6 +2933,27 @@ class InsightsPanel(tk.Frame):
         self.routing_text = self._make_box(grid, "Routing Anomalies", 7, 0)
         self.rare_pairs_text = self._make_box(grid, "Rare Device Pairs", 7, 1)
 
+        self._bind_canvas_scroll(canvas, grid)
+        for widget in (
+            self.health_text,
+            self.hotspots_text,
+            self.footprint_text,
+            self.chains_text,
+            self.storage_text,
+            self.largest_text,
+            self.unref_audio_text,
+            self.quality_text,
+            self.recent_devices_text,
+            self.device_pairs_text,
+            self.activity_delta_text,
+            self.growth_text,
+            self.duplicates_text,
+            self.cold_text,
+            self.routing_text,
+            self.rare_pairs_text,
+        ):
+            self._bind_canvas_scroll(canvas, widget)
+
     def _make_box(self, master: tk.Frame, title: str, row: int, col: int) -> tk.Text:
         box = tk.Frame(master, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
         box.grid(row=row, column=col, sticky="nsew", padx=6, pady=6)
@@ -2842,6 +3035,23 @@ class InsightsPanel(tk.Frame):
         widget.delete("1.0", "end")
         widget.insert("end", "\n".join(lines))
         widget.configure(state="disabled")
+
+    def _bind_canvas_scroll(self, canvas: tk.Canvas, widget: tk.Widget) -> None:
+        def _on_mousewheel(event: tk.Event) -> str:
+            delta = 0
+            if hasattr(event, "delta") and event.delta:
+                delta = -1 * (event.delta // 120)
+            elif getattr(event, "num", None) == 4:
+                delta = -1
+            elif getattr(event, "num", None) == 5:
+                delta = 1
+            if delta:
+                canvas.yview_scroll(int(delta), "units")
+            return "break"
+
+        widget.bind("<MouseWheel>", _on_mousewheel)
+        widget.bind("<Button-4>", _on_mousewheel)
+        widget.bind("<Button-5>", _on_mousewheel)
 
 
 class PreferencesPanel(tk.Frame):
@@ -3246,6 +3456,45 @@ class AbletoolsUI(tk.Tk):
             foreground=[("active", TEXT)],
             background=[("active", PANEL)],
         )
+        style.configure("Panel.TFrame", background=PANEL)
+        style.configure("Panel.TLabel", background=PANEL, foreground=TEXT)
+        style.configure(
+            "Panel.TLabelframe",
+            background=PANEL,
+            foreground=TEXT,
+            borderwidth=1,
+        )
+        style.configure("Panel.TLabelframe.Label", background=PANEL, foreground=TEXT)
+        style.configure(
+            "Panel.TEntry",
+            fieldbackground=PANEL_ALT,
+            foreground=TEXT,
+            background=PANEL_ALT,
+            insertcolor=TEXT,
+        )
+        style.configure(
+            "Panel.TCombobox",
+            fieldbackground=PANEL_ALT,
+            foreground=TEXT,
+            background=PANEL_ALT,
+        )
+        style.map(
+            "Panel.TCombobox",
+            fieldbackground=[("readonly", PANEL_ALT)],
+            background=[("readonly", PANEL_ALT)],
+            foreground=[("readonly", TEXT)],
+        )
+        style.configure("Panel.TCheckbutton", background=PANEL, foreground=TEXT)
+        style.map(
+            "Panel.TCheckbutton",
+            foreground=[("active", TEXT)],
+            background=[("active", PANEL)],
+        )
+        style.configure(
+            "Panel.Horizontal.TProgressbar",
+            troughcolor=PANEL_ALT,
+            background=ACCENT,
+        )
 
     def _build(self) -> None:
         self.grid_rowconfigure(0, weight=1)
@@ -3272,7 +3521,7 @@ class AbletoolsUI(tk.Tk):
         self._views["scan"] = ScanView(content, self)
         self._views["catalog"] = CatalogPanel(content, self)
         self._views["insights"] = InsightsPanel(content, self)
-        self._views["tools"] = RamifyPanel(content)
+        self._views["tools"] = RamifyPanel(content, self)
         self._views["preferences"] = PreferencesPanel(content, self)
         self._views["settings"] = SettingsPanel(content, self)
 
