@@ -18,6 +18,9 @@
 - `abletools_analytics.py`
   - set health + audio footprint metrics.
   - missing ref hotspots and device chain fingerprints.
+  - set storage summary + activity windows.
+  - unreferenced audio hotspots + quality flags.
+  - recent device usage.
 - `abletools_scan.py`
   - incremental decision logic (mtime/size/ctime/hash).
   - scope handling and output file naming.

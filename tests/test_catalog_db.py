@@ -41,6 +41,9 @@ def test_analytics_tables_exist() -> None:
         assert "device_cooccurrence" in {
             row[0] for row in conn.execute("SELECT name FROM sqlite_master")
         }
+        assert "device_usage_recent" in {
+            row[0] for row in conn.execute("SELECT name FROM sqlite_master")
+        }
         assert "doc_complexity" in {
             row[0] for row in conn.execute("SELECT name FROM sqlite_master")
         }
@@ -54,5 +57,16 @@ def test_analytics_tables_exist() -> None:
         assert "audio_footprint" in {
             row[0] for row in conn.execute("SELECT name FROM sqlite_master")
         }
+        assert "set_storage_summary" in {
+            row[0] for row in conn.execute("SELECT name FROM sqlite_master")
+        }
+        assert "set_activity_stats" in {
+            row[0] for row in conn.execute("SELECT name FROM sqlite_master")
+        }
+        assert "set_size_top" in {row[0] for row in conn.execute("SELECT name FROM sqlite_master")}
+        assert "unreferenced_audio_by_path" in {
+            row[0] for row in conn.execute("SELECT name FROM sqlite_master")
+        }
+        assert "quality_issues" in {row[0] for row in conn.execute("SELECT name FROM sqlite_master")}
     finally:
         conn.close()

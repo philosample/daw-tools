@@ -406,12 +406,76 @@ def create_schema(conn: sqlite3.Connection) -> None:
             PRIMARY KEY (scope)
         );
 
+        CREATE TABLE IF NOT EXISTS set_storage_summary (
+            scope TEXT NOT NULL,
+            total_sets INTEGER NOT NULL,
+            total_set_bytes INTEGER NOT NULL,
+            non_backup_sets INTEGER NOT NULL,
+            non_backup_bytes INTEGER NOT NULL,
+            computed_at INTEGER NOT NULL,
+            PRIMARY KEY (scope)
+        );
+
+        CREATE TABLE IF NOT EXISTS set_activity_stats (
+            scope TEXT NOT NULL,
+            window_days INTEGER NOT NULL,
+            set_count INTEGER NOT NULL,
+            total_bytes INTEGER NOT NULL,
+            computed_at INTEGER NOT NULL,
+            PRIMARY KEY (scope, window_days)
+        );
+
+        CREATE TABLE IF NOT EXISTS set_size_top (
+            scope TEXT NOT NULL,
+            path TEXT NOT NULL,
+            size_bytes INTEGER NOT NULL,
+            mtime INTEGER NOT NULL,
+            computed_at INTEGER NOT NULL,
+            PRIMARY KEY (scope, path)
+        );
+
+        CREATE TABLE IF NOT EXISTS unreferenced_audio_by_path (
+            scope TEXT NOT NULL,
+            parent_path TEXT NOT NULL,
+            file_count INTEGER NOT NULL,
+            total_bytes INTEGER NOT NULL,
+            computed_at INTEGER NOT NULL,
+            PRIMARY KEY (scope, parent_path)
+        );
+
+        CREATE TABLE IF NOT EXISTS quality_issues (
+            scope TEXT NOT NULL,
+            path TEXT NOT NULL,
+            issue TEXT NOT NULL,
+            issue_value INTEGER NOT NULL,
+            computed_at INTEGER NOT NULL,
+            PRIMARY KEY (scope, path, issue)
+        );
+
+        CREATE TABLE IF NOT EXISTS device_usage_recent (
+            scope TEXT NOT NULL,
+            window_days INTEGER NOT NULL,
+            device_name TEXT NOT NULL,
+            usage_count INTEGER NOT NULL,
+            computed_at INTEGER NOT NULL,
+            PRIMARY KEY (scope, window_days, device_name)
+        );
+
         CREATE INDEX IF NOT EXISTS idx_catalog_docs_scope ON catalog_docs(scope);
         CREATE INDEX IF NOT EXISTS idx_catalog_docs_missing ON catalog_docs(missing_refs);
         CREATE INDEX IF NOT EXISTS idx_catalog_docs_devices ON catalog_docs(has_devices);
         CREATE INDEX IF NOT EXISTS idx_catalog_docs_samples ON catalog_docs(has_samples);
         CREATE INDEX IF NOT EXISTS idx_device_cooccurrence_count ON device_cooccurrence(usage_count);
         CREATE INDEX IF NOT EXISTS idx_library_growth_scope ON library_growth(scope);
+        CREATE INDEX IF NOT EXISTS idx_missing_refs_scope ON missing_refs_by_path(scope);
+        CREATE INDEX IF NOT EXISTS idx_set_health_scope ON set_health(scope);
+        CREATE INDEX IF NOT EXISTS idx_audio_footprint_scope ON audio_footprint(scope);
+        CREATE INDEX IF NOT EXISTS idx_set_storage_summary_scope ON set_storage_summary(scope);
+        CREATE INDEX IF NOT EXISTS idx_set_activity_stats_scope ON set_activity_stats(scope);
+        CREATE INDEX IF NOT EXISTS idx_set_size_top_scope ON set_size_top(scope);
+        CREATE INDEX IF NOT EXISTS idx_unreferenced_audio_by_path_scope ON unreferenced_audio_by_path(scope);
+        CREATE INDEX IF NOT EXISTS idx_quality_issues_scope ON quality_issues(scope);
+        CREATE INDEX IF NOT EXISTS idx_device_usage_recent_scope ON device_usage_recent(scope);
         """
     )
 

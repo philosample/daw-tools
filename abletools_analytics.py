@@ -11,6 +11,21 @@ from pathlib import Path
 
 SCOPES = ("live_recordings", "user_library", "preferences")
 MAX_DEVICES_PER_DOC = 50
+ACTIVITY_WINDOWS = (30, 90)
+QUALITY_DEVICE_WARN = 150
+QUALITY_SAMPLE_WARN = 500
+BACKUP_EXCLUDE_CLAUSE = (
+    "lower(path) NOT LIKE ? AND lower(path) NOT LIKE ? "
+    "AND lower(path) NOT LIKE ? AND lower(path) NOT LIKE ? "
+    "AND path NOT GLOB ?"
+)
+BACKUP_EXCLUDE_PARAMS = [
+    "%/backup/%",
+    "%\\backup\\%",
+    "backup/%",
+    "backup\\%",
+    "*[[][0-9]*[]]*",
+]
 
 
 def scope_suffix(scope: str) -> str:
@@ -219,8 +234,11 @@ def compute_audio_footprint(conn: sqlite3.Connection, scope: str) -> None:
         f"""
         SELECT COALESCE(SUM(fi.size), 0)
         FROM file_index{suffix} fi
-        WHERE fi.path IN (
-            SELECT DISTINCT sample_path FROM doc_sample_refs{suffix}
+        WHERE EXISTS (
+            SELECT 1
+            FROM doc_sample_refs{suffix} ds
+            WHERE ds.sample_path = fi.path
+               OR ds.sample_path = (fi.parent || '/' || fi.name)
         )
         """
     ).fetchone()[0]
@@ -235,6 +253,216 @@ def compute_audio_footprint(conn: sqlite3.Connection, scope: str) -> None:
         """,
         (scope, total_media, referenced_media, unreferenced, now_ts),
     )
+
+
+def compute_set_storage_summary(conn: sqlite3.Connection, scope: str) -> None:
+    suffix = scope_suffix(scope)
+    now_ts = int(time.time())
+    total_row = conn.execute(
+        f"SELECT COUNT(*), COALESCE(SUM(size), 0) "
+        f"FROM file_index{suffix} WHERE kind = 'ableton_doc'"
+    ).fetchone()
+    non_backup_row = conn.execute(
+        f"SELECT COUNT(*), COALESCE(SUM(size), 0) "
+        f"FROM file_index{suffix} WHERE kind = 'ableton_doc' AND {BACKUP_EXCLUDE_CLAUSE}",
+        BACKUP_EXCLUDE_PARAMS,
+    ).fetchone()
+    total_sets, total_bytes = total_row or (0, 0)
+    non_backup_sets, non_backup_bytes = non_backup_row or (0, 0)
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO set_storage_summary
+            (scope, total_sets, total_set_bytes, non_backup_sets, non_backup_bytes, computed_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (
+            scope,
+            int(total_sets or 0),
+            int(total_bytes or 0),
+            int(non_backup_sets or 0),
+            int(non_backup_bytes or 0),
+            now_ts,
+        ),
+    )
+
+
+def compute_set_activity_stats(conn: sqlite3.Connection, scope: str) -> None:
+    suffix = scope_suffix(scope)
+    now_ts = int(time.time())
+    conn.execute("DELETE FROM set_activity_stats WHERE scope = ?", (scope,))
+    for days in ACTIVITY_WINDOWS:
+        cutoff = now_ts - (days * 86400)
+        row = conn.execute(
+            f"""
+            SELECT COUNT(*), COALESCE(SUM(size), 0)
+            FROM file_index{suffix}
+            WHERE kind = 'ableton_doc'
+              AND {BACKUP_EXCLUDE_CLAUSE}
+              AND mtime >= ?
+            """,
+            [*BACKUP_EXCLUDE_PARAMS, cutoff],
+        ).fetchone()
+        set_count, total_bytes = row or (0, 0)
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO set_activity_stats
+                (scope, window_days, set_count, total_bytes, computed_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (scope, int(days), int(set_count or 0), int(total_bytes or 0), now_ts),
+        )
+
+
+def compute_set_size_top(
+    conn: sqlite3.Connection, scope: str, limit: int = 10
+) -> None:
+    suffix = scope_suffix(scope)
+    now_ts = int(time.time())
+    conn.execute("DELETE FROM set_size_top WHERE scope = ?", (scope,))
+    rows = conn.execute(
+        f"""
+        SELECT path, size, mtime
+        FROM file_index{suffix}
+        WHERE kind = 'ableton_doc' AND {BACKUP_EXCLUDE_CLAUSE}
+        ORDER BY size DESC
+        LIMIT ?
+        """,
+        [*BACKUP_EXCLUDE_PARAMS, limit],
+    ).fetchall()
+    for path, size, mtime in rows:
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO set_size_top
+                (scope, path, size_bytes, mtime, computed_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (scope, path, int(size or 0), int(mtime or 0), now_ts),
+        )
+
+
+def compute_unreferenced_audio_by_path(conn: sqlite3.Connection, scope: str) -> None:
+    suffix = scope_suffix(scope)
+    now_ts = int(time.time())
+    conn.execute("DELETE FROM unreferenced_audio_by_path WHERE scope = ?", (scope,))
+    rows = conn.execute(
+        f"""
+        SELECT parent, COUNT(*), COALESCE(SUM(size), 0)
+        FROM file_index{suffix} fi
+        WHERE fi.kind = 'media'
+          AND NOT EXISTS (
+              SELECT 1
+              FROM doc_sample_refs{suffix} ds
+              WHERE ds.sample_path = fi.path
+                 OR ds.sample_path = (fi.parent || '/' || fi.name)
+          )
+        GROUP BY parent
+        ORDER BY COALESCE(SUM(size), 0) DESC
+        """
+    ).fetchall()
+    for parent, count, total_bytes in rows:
+        if not parent:
+            continue
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO unreferenced_audio_by_path
+                (scope, parent_path, file_count, total_bytes, computed_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (scope, parent, int(count or 0), int(total_bytes or 0), now_ts),
+        )
+
+
+def compute_quality_issues(conn: sqlite3.Connection, scope: str) -> None:
+    now_ts = int(time.time())
+    conn.execute("DELETE FROM quality_issues WHERE scope = ?", (scope,))
+    rows = conn.execute(
+        """
+        SELECT path, tracks_total, clips_total, devices_count, samples_count, missing_refs_count
+        FROM doc_complexity
+        WHERE scope = ?
+        """,
+        (scope,),
+    ).fetchall()
+    for path, tracks, clips, devices, samples, missing in rows:
+        tracks = int(tracks or 0)
+        clips = int(clips or 0)
+        devices = int(devices or 0)
+        samples = int(samples or 0)
+        missing = int(missing or 0)
+        if tracks == 0:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO quality_issues
+                    (scope, path, issue, issue_value, computed_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (scope, path, "zero_tracks", 0, now_ts),
+            )
+        if clips == 0:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO quality_issues
+                    (scope, path, issue, issue_value, computed_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (scope, path, "zero_clips", 0, now_ts),
+            )
+        if missing > 0:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO quality_issues
+                    (scope, path, issue, issue_value, computed_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (scope, path, "missing_refs", missing, now_ts),
+            )
+        if devices > QUALITY_DEVICE_WARN:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO quality_issues
+                    (scope, path, issue, issue_value, computed_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (scope, path, "high_device_count", devices, now_ts),
+            )
+        if samples > QUALITY_SAMPLE_WARN:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO quality_issues
+                    (scope, path, issue, issue_value, computed_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (scope, path, "high_sample_count", samples, now_ts),
+            )
+
+
+def compute_device_usage_recent(conn: sqlite3.Connection, scope: str) -> None:
+    suffix = scope_suffix(scope)
+    now_ts = int(time.time())
+    conn.execute("DELETE FROM device_usage_recent WHERE scope = ?", (scope,))
+    for days in ACTIVITY_WINDOWS:
+        cutoff = now_ts - (days * 86400)
+        rows = conn.execute(
+            f"""
+            SELECT dh.device_hint, COUNT(*)
+            FROM doc_device_hints{suffix} dh
+            JOIN file_index{suffix} fi ON fi.path = dh.doc_path
+            WHERE fi.kind = 'ableton_doc'
+              AND {BACKUP_EXCLUDE_CLAUSE}
+              AND fi.mtime >= ?
+            GROUP BY dh.device_hint
+            """,
+            [*BACKUP_EXCLUDE_PARAMS, cutoff],
+        ).fetchall()
+        for device_name, count in rows:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO device_usage_recent
+                    (scope, window_days, device_name, usage_count, computed_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (scope, int(days), device_name, int(count or 0), now_ts),
+            )
 
 
 def main(argv: list[str]) -> int:
@@ -257,6 +485,12 @@ def main(argv: list[str]) -> int:
             compute_missing_refs_by_path(conn, scope)
             compute_set_health(conn, scope)
             compute_audio_footprint(conn, scope)
+            compute_set_storage_summary(conn, scope)
+            compute_set_activity_stats(conn, scope)
+            compute_set_size_top(conn, scope)
+            compute_unreferenced_audio_by_path(conn, scope)
+            compute_quality_issues(conn, scope)
+            compute_device_usage_recent(conn, scope)
 
     return 0
 

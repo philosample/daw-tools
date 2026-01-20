@@ -2717,18 +2717,43 @@ class InsightsPanel(tk.Frame):
         ttk.Button(
             header, text="Refresh", command=self.refresh, style="Accent.TButton"
         ).pack(side="right")
+        container = tk.Frame(self, bg=BG)
+        container.pack(fill="both", expand=True, padx=16, pady=(0, 16))
 
-        grid = tk.Frame(self, bg=BG)
-        grid.pack(fill="both", expand=True, padx=16, pady=(0, 16))
+        canvas = tk.Canvas(container, bg=BG, highlightthickness=0)
+        scroll = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=scroll.set)
+
+        scroll.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+
+        grid = tk.Frame(canvas, bg=BG)
+        grid_id = canvas.create_window((0, 0), window=grid, anchor="nw")
+
+        def _sync_scroll(_event: tk.Event) -> None:
+            canvas.configure(scrollregion=canvas.bbox("all"))
+
+        def _sync_width(event: tk.Event) -> None:
+            canvas.itemconfigure(grid_id, width=event.width)
+
+        grid.bind("<Configure>", _sync_scroll)
+        canvas.bind("<Configure>", _sync_width)
+
         for col in range(2):
             grid.columnconfigure(col, weight=1)
-        for row in range(2):
+        for row in range(5):
             grid.rowconfigure(row, weight=1)
 
         self.health_text = self._make_box(grid, "Set Health (Worst)", 0, 0)
         self.hotspots_text = self._make_box(grid, "Missing Ref Hotspots", 0, 1)
         self.footprint_text = self._make_box(grid, "Audio Footprint", 1, 0)
         self.chains_text = self._make_box(grid, "Top Device Chains", 1, 1)
+        self.storage_text = self._make_box(grid, "Set Storage + Activity", 2, 0)
+        self.largest_text = self._make_box(grid, "Largest Sets", 2, 1)
+        self.unref_audio_text = self._make_box(grid, "Unreferenced Audio Hotspots", 3, 0)
+        self.quality_text = self._make_box(grid, "Quality Flags", 3, 1)
+        self.recent_devices_text = self._make_box(grid, "Recent Devices (30d)", 4, 0)
+        self.device_pairs_text = self._make_box(grid, "Top Device Pairs", 4, 1)
 
     def _make_box(self, master: tk.Frame, title: str, row: int, col: int) -> tk.Text:
         box = tk.Frame(master, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
@@ -2755,6 +2780,13 @@ class InsightsPanel(tk.Frame):
         hotspots = self.app.load_missing_hotspots(scope, limit=8)
         footprint = self.app.load_audio_footprint(scope)
         chains = self.app.load_chain_fingerprints(scope, limit=8)
+        storage = self.app.load_set_storage_summary(scope)
+        activity = self.app.load_set_activity(scope)
+        largest_sets = self.app.load_largest_sets(scope, limit=8)
+        unref_audio = self.app.load_unreferenced_audio(scope, limit=8)
+        quality = self.app.load_quality_issues(scope, limit=8)
+        recent_devices = self.app.load_recent_device_usage(scope, window_days=30, limit=8)
+        device_pairs = self.app.load_device_pairs(scope, limit=8)
 
         self._fill_text(self.health_text, health or ["No data yet."])
         self._fill_text(self.hotspots_text, hotspots or ["No data yet."])
@@ -2768,6 +2800,24 @@ class InsightsPanel(tk.Frame):
             lines = ["No data yet."]
         self._fill_text(self.footprint_text, lines)
         self._fill_text(self.chains_text, chains or ["No data yet."])
+        storage_lines = []
+        if storage:
+            storage_lines.append(
+                f"Total sets: {storage.get('total_sets', 0)} "
+                f"({format_bytes(storage.get('total_set_bytes', 0))})"
+            )
+            storage_lines.append(
+                f"Non-backup: {storage.get('non_backup_sets', 0)} "
+                f"({format_bytes(storage.get('non_backup_bytes', 0))})"
+            )
+        if activity:
+            storage_lines.extend(activity)
+        self._fill_text(self.storage_text, storage_lines or ["No data yet."])
+        self._fill_text(self.largest_text, largest_sets or ["No data yet."])
+        self._fill_text(self.unref_audio_text, unref_audio or ["No data yet."])
+        self._fill_text(self.quality_text, quality or ["No data yet."])
+        self._fill_text(self.recent_devices_text, recent_devices or ["No data yet."])
+        self._fill_text(self.device_pairs_text, device_pairs or ["No data yet."])
 
     def _fill_text(self, widget: tk.Text, lines: list[str]) -> None:
         widget.configure(state="normal")
@@ -3643,13 +3693,156 @@ class AbletoolsUI(tk.Tk):
         except Exception:
             return {}
 
+    def load_set_storage_summary(self, scope: str) -> dict[str, int]:
+        db_path = self.resolve_catalog_db_path()
+        if not db_path or not db_path.exists():
+            return {}
+        try:
+            with sqlite3.connect(db_path) as conn:
+                row = conn.execute(
+                    "SELECT total_sets, total_set_bytes, non_backup_sets, non_backup_bytes "
+                    "FROM set_storage_summary WHERE scope = ?",
+                    (scope,),
+                ).fetchone()
+            if not row:
+                return {}
+            return {
+                "total_sets": int(row[0]),
+                "total_set_bytes": int(row[1]),
+                "non_backup_sets": int(row[2]),
+                "non_backup_bytes": int(row[3]),
+            }
+        except Exception:
+            return {}
+
+    def load_set_activity(self, scope: str) -> list[str]:
+        db_path = self.resolve_catalog_db_path()
+        if not db_path or not db_path.exists():
+            return []
+        try:
+            with sqlite3.connect(db_path) as conn:
+                rows = conn.execute(
+                    "SELECT window_days, set_count, total_bytes "
+                    "FROM set_activity_stats WHERE scope = ? "
+                    "ORDER BY window_days ASC",
+                    (scope,),
+                ).fetchall()
+            lines = []
+            for days, count, total_bytes in rows:
+                lines.append(
+                    f"Last {days}d: {int(count)} sets ({format_bytes(int(total_bytes))})"
+                )
+            return lines
+        except Exception:
+            return []
+
+    def load_largest_sets(self, scope: str, limit: int = 8) -> list[str]:
+        db_path = self.resolve_catalog_db_path()
+        if not db_path or not db_path.exists():
+            return []
+        try:
+            with sqlite3.connect(db_path) as conn:
+                rows = conn.execute(
+                    "SELECT path, size_bytes FROM set_size_top "
+                    "WHERE scope = ? ORDER BY size_bytes DESC LIMIT ?",
+                    (scope, limit),
+                ).fetchall()
+            return [f"{Path(path).stem} ({format_bytes(size)})" for path, size in rows]
+        except Exception:
+            return []
+
+    def load_unreferenced_audio(self, scope: str, limit: int = 8) -> list[str]:
+        db_path = self.resolve_catalog_db_path()
+        if not db_path or not db_path.exists():
+            return []
+        try:
+            with sqlite3.connect(db_path) as conn:
+                rows = conn.execute(
+                    "SELECT parent_path, file_count, total_bytes "
+                    "FROM unreferenced_audio_by_path "
+                    "WHERE scope = ? ORDER BY total_bytes DESC LIMIT ?",
+                    (scope, limit),
+                ).fetchall()
+            return [
+                f"{path} ({int(count)} files, {format_bytes(int(total))})"
+                for path, count, total in rows
+            ]
+        except Exception:
+            return []
+
+    def load_quality_issues(self, scope: str, limit: int = 8) -> list[str]:
+        db_path = self.resolve_catalog_db_path()
+        if not db_path or not db_path.exists():
+            return []
+        try:
+            with sqlite3.connect(db_path) as conn:
+                rows = conn.execute(
+                    "SELECT issue, path, issue_value FROM quality_issues "
+                    "WHERE scope = ? ORDER BY issue_value DESC LIMIT ?",
+                    (scope, limit),
+                ).fetchall()
+            results = []
+            for issue, path, value in rows:
+                name = Path(path).stem
+                label = issue.replace("_", " ")
+                if value:
+                    results.append(f"{label}: {name} ({int(value)})")
+                else:
+                    results.append(f"{label}: {name}")
+            return results
+        except Exception:
+            return []
+
+    def load_recent_device_usage(
+        self, scope: str, window_days: int = 30, limit: int = 8
+    ) -> list[str]:
+        db_path = self.resolve_catalog_db_path()
+        if not db_path or not db_path.exists():
+            return []
+        try:
+            with sqlite3.connect(db_path) as conn:
+                rows = conn.execute(
+                    "SELECT device_name, usage_count FROM device_usage_recent "
+                    "WHERE scope = ? AND window_days = ? "
+                    "ORDER BY usage_count DESC LIMIT ?",
+                    (scope, window_days, limit),
+                ).fetchall()
+            return [f"{name} ({int(count)})" for name, count in rows]
+        except Exception:
+            return []
+
+    def load_device_pairs(self, scope: str, limit: int = 8) -> list[str]:
+        db_path = self.resolve_catalog_db_path()
+        if not db_path or not db_path.exists():
+            return []
+        try:
+            with sqlite3.connect(db_path) as conn:
+                rows = conn.execute(
+                    "SELECT device_a, device_b, usage_count FROM device_cooccurrence "
+                    "WHERE scope = ? ORDER BY usage_count DESC LIMIT ?",
+                    (scope, limit),
+                ).fetchall()
+            return [f"{a} + {b} ({int(count)})" for a, b, count in rows]
+        except Exception:
+            return []
+
     def load_dashboard_focus(self, scope: str) -> dict[str, int]:
         db_path = self.resolve_catalog_db_path()
         if not db_path or not db_path.exists():
             return {}
         suffix = "" if scope == "live_recordings" else f"_{scope}"
-        backup_clause = "lower(path) NOT LIKE ? AND lower(path) NOT LIKE ? AND path NOT GLOB ?"
-        backup_params = ["%/backup/%", "%\\backup\\%", "*[[][0-9]*[]]*"]
+        backup_clause = (
+            "lower(path) NOT LIKE ? AND lower(path) NOT LIKE ? "
+            "AND lower(path) NOT LIKE ? AND lower(path) NOT LIKE ? "
+            "AND path NOT GLOB ?"
+        )
+        backup_params = [
+            "%/backup/%",
+            "%\\backup\\%",
+            "backup/%",
+            "backup\\%",
+            "*[[][0-9]*[]]*",
+        ]
         result = {
             "set_count_total": 0,
             "set_count_non_backup": 0,
@@ -3710,8 +3903,18 @@ class AbletoolsUI(tk.Tk):
         if not db_path or not db_path.exists():
             return 0, 0
         suffix = "" if scope == "live_recordings" else f"_{scope}"
-        backup_clause = "lower(path) NOT LIKE ? AND lower(path) NOT LIKE ? AND path NOT GLOB ?"
-        backup_params = ["%/backup/%", "%\\backup\\%", "*[[][0-9]*[]]*"]
+        backup_clause = (
+            "lower(path) NOT LIKE ? AND lower(path) NOT LIKE ? "
+            "AND lower(path) NOT LIKE ? AND lower(path) NOT LIKE ? "
+            "AND path NOT GLOB ?"
+        )
+        backup_params = [
+            "%/backup/%",
+            "%\\backup\\%",
+            "backup/%",
+            "backup\\%",
+            "*[[][0-9]*[]]*",
+        ]
         if kind == "audio":
             where = "kind = 'media'"
         else:

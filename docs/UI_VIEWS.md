@@ -25,6 +25,12 @@
   - Missing reference hotspots by folder.
   - Audio footprint (total/referenced/unreferenced).
   - Top device chains.
+  - Set storage + activity windows.
+  - Largest sets by size.
+  - Unreferenced audio hotspots.
+  - Quality flags (empty sets, missing refs, large counts).
+  - Recent device usage (30d).
+  - Top device pairs.
 
 ## Prefs
 - Sources table: kind, source path, last modified.
