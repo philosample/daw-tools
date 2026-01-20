@@ -1,0 +1,2 @@
+# Project uses only stdlib; optional UI SVG export dependency.
+cairosvg>=2.7.1

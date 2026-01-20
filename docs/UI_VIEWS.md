@@ -9,15 +9,20 @@
 - Log: background animation + readable text.
 
 ## Catalog
-- Search bar + filters on the left.
-- Default columns:
-  - Path
-  - File type
+- Single control row: filters (left) + scope/search (right).
+- Summary table columns:
+  - Name
+  - Modified
+  - Size
   - Tracks
   - Clips
-  - Has devices
-  - Has samples
-  - Missing refs
+  - Devices
+  - Samples
+  - Missing
+  - Targeted
+  - Ext
+  - Scope
+- Details panel: fixed width, scrollable fields, centered action buttons.
 
 ## Insights
 - Panels:
