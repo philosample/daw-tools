@@ -62,7 +62,7 @@ A consolidated SQLite DB is written to:
 - **Dash**: Summary stats and recent activity.
 - **Scan**: Run scans, pick scope, and manage incremental options.
 - **Catalog**: Search and filter indexed documents.
-- **Insights**: Health, missing refs, audio footprint, chain fingerprints, storage/activity, and quality flags.
+- **Insights**: Health, missing refs, audio footprint, chain fingerprints, storage/activity deltas, duplicates, cold samples, routing anomalies, and device pair signals.
 - **Tools**: Utilities (e.g. RAMify).
 - **Prefs**: Parsed preferences + summary.
 - **Settings**: App configuration and future utilities.

@@ -6,12 +6,18 @@ import time
 from abletools_analytics import (
     compute_audio_footprint,
     compute_device_chains,
+    compute_device_pair_anomalies,
     compute_device_usage_recent,
+    compute_cold_samples,
     compute_missing_refs_by_path,
+    compute_routing_anomalies,
     compute_set_health,
     compute_set_activity_stats,
+    compute_set_activity_delta,
+    compute_set_growth_by_parent,
     compute_set_size_top,
     compute_set_storage_summary,
+    compute_sample_duplicate_groups,
     compute_quality_issues,
     compute_unreferenced_audio_by_path,
 )
@@ -242,6 +248,152 @@ def test_compute_device_usage_recent() -> None:
             "SELECT usage_count FROM device_usage_recent "
             "WHERE scope = ? AND window_days = 30 AND device_name = ?",
             ("live_recordings", "EQ Eight"),
+        ).fetchone()
+        assert row == (1,)
+    finally:
+        conn.close()
+
+
+def test_compute_set_activity_delta() -> None:
+    conn = sqlite3.connect(":memory:")
+    try:
+        create_schema(conn)
+        now_ts = int(time.time())
+        past_ts = now_ts - (40 * 86400)
+        conn.execute(
+            "INSERT INTO file_index (path, ext, size, mtime, kind, scanned_at) "
+            "VALUES ('Sets/A.als', '.als', 100, ?, 'ableton_doc', 1)",
+            (now_ts,),
+        )
+        conn.execute(
+            "INSERT INTO file_index (path, ext, size, mtime, kind, scanned_at) "
+            "VALUES ('Sets/B.als', '.als', 50, ?, 'ableton_doc', 1)",
+            (past_ts,),
+        )
+        compute_set_activity_delta(conn, "live_recordings")
+        row = conn.execute(
+            "SELECT current_bytes, previous_bytes, delta_bytes "
+            "FROM set_activity_delta WHERE scope = ? AND window_days = 30",
+            ("live_recordings",),
+        ).fetchone()
+        assert row is not None
+        assert row[0] >= 100
+    finally:
+        conn.close()
+
+
+def test_compute_set_growth_by_parent() -> None:
+    conn = sqlite3.connect(":memory:")
+    try:
+        create_schema(conn)
+        now_ts = int(time.time())
+        past_ts = now_ts - (40 * 86400)
+        conn.execute(
+            "INSERT INTO file_index (path, ext, size, mtime, kind, scanned_at, parent) "
+            "VALUES ('Sets/A.als', '.als', 100, ?, 'ableton_doc', 1, '/root/Sets')",
+            (now_ts,),
+        )
+        conn.execute(
+            "INSERT INTO file_index (path, ext, size, mtime, kind, scanned_at, parent) "
+            "VALUES ('Sets/B.als', '.als', 50, ?, 'ableton_doc', 1, '/root/Sets')",
+            (past_ts,),
+        )
+        compute_set_growth_by_parent(conn, "live_recordings")
+        row = conn.execute(
+            "SELECT delta_bytes FROM set_growth_by_parent "
+            "WHERE scope = ? AND window_days = 30 AND parent_path = ?",
+            ("live_recordings", "/root/Sets"),
+        ).fetchone()
+        assert row is not None
+    finally:
+        conn.close()
+
+
+def test_compute_sample_duplicate_groups() -> None:
+    conn = sqlite3.connect(":memory:")
+    try:
+        create_schema(conn)
+        conn.execute(
+            "INSERT INTO file_index (path, ext, size, mtime, kind, scanned_at, sha1) "
+            "VALUES ('Audio/a.wav', '.wav', 100, 1, 'media', 1, 'abc')"
+        )
+        conn.execute(
+            "INSERT INTO file_index (path, ext, size, mtime, kind, scanned_at, sha1) "
+            "VALUES ('Audio/b.wav', '.wav', 100, 1, 'media', 1, 'abc')"
+        )
+        compute_sample_duplicate_groups(conn, "live_recordings")
+        row = conn.execute(
+            "SELECT file_count FROM sample_duplicate_groups WHERE scope = ? AND sha1 = ?",
+            ("live_recordings", "abc"),
+        ).fetchone()
+        assert row == (2,)
+    finally:
+        conn.close()
+
+
+def test_compute_cold_samples() -> None:
+    conn = sqlite3.connect(":memory:")
+    try:
+        create_schema(conn)
+        now_ts = int(time.time())
+        old_ts = now_ts - (200 * 86400)
+        conn.execute(
+            "INSERT INTO file_index (path, ext, size, mtime, kind, scanned_at, parent, name) "
+            "VALUES ('/root/Audio/a.wav', '.wav', 100, ?, 'media', 1, '/root/Audio', 'a.wav')",
+            (old_ts,),
+        )
+        conn.execute(
+            "INSERT INTO file_index (path, ext, size, mtime, kind, scanned_at) "
+            "VALUES ('/root/Sets/A.als', '.als', 100, ?, 'ableton_doc', 1)",
+            (old_ts,),
+        )
+        conn.execute(
+            "INSERT INTO doc_sample_refs (doc_path, sample_path, scanned_at) "
+            "VALUES ('/root/Sets/A.als', '/root/Audio/a.wav', 1)"
+        )
+        compute_cold_samples(conn, "live_recordings")
+        row = conn.execute(
+            "SELECT sample_count FROM cold_samples_summary "
+            "WHERE scope = ? AND cutoff_days = 90",
+            ("live_recordings",),
+        ).fetchone()
+        assert row is not None
+        assert row[0] >= 1
+    finally:
+        conn.close()
+
+
+def test_compute_routing_anomalies() -> None:
+    conn = sqlite3.connect(":memory:")
+    try:
+        create_schema(conn)
+        conn.execute(
+            "INSERT INTO ableton_routing (doc_path, track_index, direction, value, meta_json) "
+            "VALUES ('/root/Sets/A.als', 0, 'input', '', '{}')"
+        )
+        compute_routing_anomalies(conn, "live_recordings")
+        row = conn.execute(
+            "SELECT issue_value FROM routing_anomalies WHERE scope = ? AND path = ?",
+            ("live_recordings", "/root/Sets/A.als"),
+        ).fetchone()
+        assert row == (1,)
+    finally:
+        conn.close()
+
+
+def test_compute_device_pair_anomalies() -> None:
+    conn = sqlite3.connect(":memory:")
+    try:
+        create_schema(conn)
+        conn.execute(
+            "INSERT INTO device_cooccurrence (scope, device_a, device_b, usage_count, computed_at) "
+            "VALUES ('live_recordings', 'EQ Eight', 'Compressor', 1, 1)"
+        )
+        compute_device_pair_anomalies(conn, "live_recordings")
+        row = conn.execute(
+            "SELECT usage_count FROM device_pair_anomalies "
+            "WHERE scope = ? AND device_a = ? AND device_b = ?",
+            ("live_recordings", "EQ Eight", "Compressor"),
         ).fetchone()
         assert row == (1,)
     finally:

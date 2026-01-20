@@ -16,24 +16,27 @@
 - Device chain fingerprints (top sequences).
 - Set storage summary (total + non-backup bytes).
 - Set activity windows (30/90-day counts + bytes).
+- Set activity deltas vs prior window.
+- Fastest-growing folders by recent bytes.
 - Largest sets (by file size).
 - Unreferenced audio hotspots (by folder).
 - Quality flags (zero clips/tracks, missing refs, large counts).
 - Recent device usage (30d/90d).
+- Rare device pairs (low co-occurrence).
+- Sample duplication groups (sha1 + size).
+- Cold samples (not referenced by recent sets).
+- Routing anomalies (missing routing values).
 
 ## Next Focus (Based on Catalog Coverage)
-1. Recency + growth trends
-   - "Fastest growing" folders (bytes/week).
-   - Rolling activity deltas vs. previous window.
-2. Device usage profiles
-   - Rare device combos and anomaly detection.
-   - Time-window comparisons (30d vs. 90d).
-3. Sample hygiene
-   - Sample duplication detection (hash + path).
-   - Media aging (cold samples not referenced in recent sets).
-4. Project quality checks
-   - Missing routing anomalies.
-   - Zero-clip or silent-track detection from structured XML.
+1. Deeper routing/track checks
+   - Silent track detection (no clips + no routing).
+   - Input/output mismatch heuristics per track type.
+2. Sample intelligence
+   - BPM/key detection for audio samples.
+   - Similarity clustering (beyond hash duplicates).
+3. Device + clip analytics
+   - Device parameter usage distributions.
+   - Clip warp/loop usage and clip density outliers.
 
 ## Tooling Ideas
 - Batch "archive" suggestions for cold sets and dead samples.

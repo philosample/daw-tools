@@ -461,6 +461,78 @@ def create_schema(conn: sqlite3.Connection) -> None:
             PRIMARY KEY (scope, window_days, device_name)
         );
 
+        CREATE TABLE IF NOT EXISTS set_activity_delta (
+            scope TEXT NOT NULL,
+            window_days INTEGER NOT NULL,
+            current_sets INTEGER NOT NULL,
+            previous_sets INTEGER NOT NULL,
+            current_bytes INTEGER NOT NULL,
+            previous_bytes INTEGER NOT NULL,
+            delta_bytes INTEGER NOT NULL,
+            computed_at INTEGER NOT NULL,
+            PRIMARY KEY (scope, window_days)
+        );
+
+        CREATE TABLE IF NOT EXISTS set_growth_by_parent (
+            scope TEXT NOT NULL,
+            window_days INTEGER NOT NULL,
+            parent_path TEXT NOT NULL,
+            current_sets INTEGER NOT NULL,
+            previous_sets INTEGER NOT NULL,
+            current_bytes INTEGER NOT NULL,
+            previous_bytes INTEGER NOT NULL,
+            delta_bytes INTEGER NOT NULL,
+            computed_at INTEGER NOT NULL,
+            PRIMARY KEY (scope, window_days, parent_path)
+        );
+
+        CREATE TABLE IF NOT EXISTS sample_duplicate_groups (
+            scope TEXT NOT NULL,
+            sha1 TEXT NOT NULL,
+            file_count INTEGER NOT NULL,
+            total_bytes INTEGER NOT NULL,
+            example_path TEXT,
+            computed_at INTEGER NOT NULL,
+            PRIMARY KEY (scope, sha1)
+        );
+
+        CREATE TABLE IF NOT EXISTS cold_samples_summary (
+            scope TEXT NOT NULL,
+            cutoff_days INTEGER NOT NULL,
+            sample_count INTEGER NOT NULL,
+            total_bytes INTEGER NOT NULL,
+            computed_at INTEGER NOT NULL,
+            PRIMARY KEY (scope, cutoff_days)
+        );
+
+        CREATE TABLE IF NOT EXISTS cold_samples_by_path (
+            scope TEXT NOT NULL,
+            cutoff_days INTEGER NOT NULL,
+            parent_path TEXT NOT NULL,
+            sample_count INTEGER NOT NULL,
+            total_bytes INTEGER NOT NULL,
+            computed_at INTEGER NOT NULL,
+            PRIMARY KEY (scope, cutoff_days, parent_path)
+        );
+
+        CREATE TABLE IF NOT EXISTS routing_anomalies (
+            scope TEXT NOT NULL,
+            path TEXT NOT NULL,
+            issue TEXT NOT NULL,
+            issue_value INTEGER NOT NULL,
+            computed_at INTEGER NOT NULL,
+            PRIMARY KEY (scope, path, issue)
+        );
+
+        CREATE TABLE IF NOT EXISTS device_pair_anomalies (
+            scope TEXT NOT NULL,
+            device_a TEXT NOT NULL,
+            device_b TEXT NOT NULL,
+            usage_count INTEGER NOT NULL,
+            computed_at INTEGER NOT NULL,
+            PRIMARY KEY (scope, device_a, device_b)
+        );
+
         CREATE INDEX IF NOT EXISTS idx_catalog_docs_scope ON catalog_docs(scope);
         CREATE INDEX IF NOT EXISTS idx_catalog_docs_missing ON catalog_docs(missing_refs);
         CREATE INDEX IF NOT EXISTS idx_catalog_docs_devices ON catalog_docs(has_devices);
@@ -476,6 +548,13 @@ def create_schema(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_unreferenced_audio_by_path_scope ON unreferenced_audio_by_path(scope);
         CREATE INDEX IF NOT EXISTS idx_quality_issues_scope ON quality_issues(scope);
         CREATE INDEX IF NOT EXISTS idx_device_usage_recent_scope ON device_usage_recent(scope);
+        CREATE INDEX IF NOT EXISTS idx_set_activity_delta_scope ON set_activity_delta(scope);
+        CREATE INDEX IF NOT EXISTS idx_set_growth_by_parent_scope ON set_growth_by_parent(scope);
+        CREATE INDEX IF NOT EXISTS idx_sample_duplicate_groups_scope ON sample_duplicate_groups(scope);
+        CREATE INDEX IF NOT EXISTS idx_cold_samples_summary_scope ON cold_samples_summary(scope);
+        CREATE INDEX IF NOT EXISTS idx_cold_samples_by_path_scope ON cold_samples_by_path(scope);
+        CREATE INDEX IF NOT EXISTS idx_routing_anomalies_scope ON routing_anomalies(scope);
+        CREATE INDEX IF NOT EXISTS idx_device_pair_anomalies_scope ON device_pair_anomalies(scope);
         """
     )
 

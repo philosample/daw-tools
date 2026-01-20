@@ -68,5 +68,26 @@ def test_analytics_tables_exist() -> None:
             row[0] for row in conn.execute("SELECT name FROM sqlite_master")
         }
         assert "quality_issues" in {row[0] for row in conn.execute("SELECT name FROM sqlite_master")}
+        assert "set_activity_delta" in {
+            row[0] for row in conn.execute("SELECT name FROM sqlite_master")
+        }
+        assert "set_growth_by_parent" in {
+            row[0] for row in conn.execute("SELECT name FROM sqlite_master")
+        }
+        assert "sample_duplicate_groups" in {
+            row[0] for row in conn.execute("SELECT name FROM sqlite_master")
+        }
+        assert "cold_samples_summary" in {
+            row[0] for row in conn.execute("SELECT name FROM sqlite_master")
+        }
+        assert "cold_samples_by_path" in {
+            row[0] for row in conn.execute("SELECT name FROM sqlite_master")
+        }
+        assert "routing_anomalies" in {
+            row[0] for row in conn.execute("SELECT name FROM sqlite_master")
+        }
+        assert "device_pair_anomalies" in {
+            row[0] for row in conn.execute("SELECT name FROM sqlite_master")
+        }
     finally:
         conn.close()

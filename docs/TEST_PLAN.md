@@ -21,6 +21,9 @@
   - set storage summary + activity windows.
   - unreferenced audio hotspots + quality flags.
   - recent device usage.
+  - activity deltas + growth-by-folder.
+  - sample duplicates + cold samples.
+  - routing anomalies + rare device pairs.
 - `abletools_scan.py`
   - incremental decision logic (mtime/size/ctime/hash).
   - scope handling and output file naming.

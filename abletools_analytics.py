@@ -12,6 +12,7 @@ from pathlib import Path
 SCOPES = ("live_recordings", "user_library", "preferences")
 MAX_DEVICES_PER_DOC = 50
 ACTIVITY_WINDOWS = (30, 90)
+COLD_SAMPLE_CUTOFFS = (90, 180)
 QUALITY_DEVICE_WARN = 150
 QUALITY_SAMPLE_WARN = 500
 BACKUP_EXCLUDE_CLAUSE = (
@@ -465,6 +466,266 @@ def compute_device_usage_recent(conn: sqlite3.Connection, scope: str) -> None:
             )
 
 
+def compute_set_activity_delta(conn: sqlite3.Connection, scope: str) -> None:
+    suffix = scope_suffix(scope)
+    now_ts = int(time.time())
+    conn.execute("DELETE FROM set_activity_delta WHERE scope = ?", (scope,))
+    for days in ACTIVITY_WINDOWS:
+        current_cutoff = now_ts - (days * 86400)
+        prev_cutoff = now_ts - (days * 2 * 86400)
+        current_row = conn.execute(
+            f"""
+            SELECT COUNT(*), COALESCE(SUM(size), 0)
+            FROM file_index{suffix}
+            WHERE kind = 'ableton_doc'
+              AND {BACKUP_EXCLUDE_CLAUSE}
+              AND mtime >= ?
+            """,
+            [*BACKUP_EXCLUDE_PARAMS, current_cutoff],
+        ).fetchone()
+        previous_row = conn.execute(
+            f"""
+            SELECT COUNT(*), COALESCE(SUM(size), 0)
+            FROM file_index{suffix}
+            WHERE kind = 'ableton_doc'
+              AND {BACKUP_EXCLUDE_CLAUSE}
+              AND mtime >= ?
+              AND mtime < ?
+            """,
+            [*BACKUP_EXCLUDE_PARAMS, prev_cutoff, current_cutoff],
+        ).fetchone()
+        current_sets, current_bytes = current_row or (0, 0)
+        prev_sets, prev_bytes = previous_row or (0, 0)
+        delta_bytes = int(current_bytes or 0) - int(prev_bytes or 0)
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO set_activity_delta
+                (scope, window_days, current_sets, previous_sets, current_bytes, previous_bytes, delta_bytes, computed_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                scope,
+                int(days),
+                int(current_sets or 0),
+                int(prev_sets or 0),
+                int(current_bytes or 0),
+                int(prev_bytes or 0),
+                int(delta_bytes),
+                now_ts,
+            ),
+        )
+
+
+def compute_set_growth_by_parent(conn: sqlite3.Connection, scope: str) -> None:
+    suffix = scope_suffix(scope)
+    now_ts = int(time.time())
+    conn.execute("DELETE FROM set_growth_by_parent WHERE scope = ?", (scope,))
+    for days in ACTIVITY_WINDOWS:
+        current_cutoff = now_ts - (days * 86400)
+        prev_cutoff = now_ts - (days * 2 * 86400)
+        rows = conn.execute(
+            f"""
+            SELECT parent,
+                   SUM(CASE WHEN mtime >= ? THEN 1 ELSE 0 END) AS current_sets,
+                   SUM(CASE WHEN mtime >= ? THEN size ELSE 0 END) AS current_bytes,
+                   SUM(CASE WHEN mtime >= ? AND mtime < ? THEN 1 ELSE 0 END) AS previous_sets,
+                   SUM(CASE WHEN mtime >= ? AND mtime < ? THEN size ELSE 0 END) AS previous_bytes
+            FROM file_index{suffix}
+            WHERE kind = 'ableton_doc' AND {BACKUP_EXCLUDE_CLAUSE}
+            GROUP BY parent
+            """,
+            [
+                current_cutoff,
+                current_cutoff,
+                prev_cutoff,
+                current_cutoff,
+                prev_cutoff,
+                current_cutoff,
+                *BACKUP_EXCLUDE_PARAMS,
+            ],
+        ).fetchall()
+        for parent, current_sets, current_bytes, prev_sets, prev_bytes in rows:
+            if not parent:
+                continue
+            delta_bytes = int(current_bytes or 0) - int(prev_bytes or 0)
+            if current_sets is None and prev_sets is None:
+                continue
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO set_growth_by_parent
+                    (scope, window_days, parent_path, current_sets, previous_sets,
+                     current_bytes, previous_bytes, delta_bytes, computed_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    scope,
+                    int(days),
+                    parent,
+                    int(current_sets or 0),
+                    int(prev_sets or 0),
+                    int(current_bytes or 0),
+                    int(prev_bytes or 0),
+                    int(delta_bytes),
+                    now_ts,
+                ),
+            )
+
+
+def compute_sample_duplicate_groups(conn: sqlite3.Connection, scope: str) -> None:
+    suffix = scope_suffix(scope)
+    now_ts = int(time.time())
+    conn.execute("DELETE FROM sample_duplicate_groups WHERE scope = ?", (scope,))
+    rows = conn.execute(
+        f"""
+        SELECT sha1, COUNT(*) AS file_count, COALESCE(SUM(size), 0) AS total_bytes,
+               MIN(path) AS example_path
+        FROM file_index{suffix}
+        WHERE kind = 'media' AND sha1 IS NOT NULL AND sha1 != ''
+        GROUP BY sha1
+        HAVING COUNT(*) > 1
+        ORDER BY total_bytes DESC
+        """
+    ).fetchall()
+    for sha1, file_count, total_bytes, example_path in rows:
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO sample_duplicate_groups
+                (scope, sha1, file_count, total_bytes, example_path, computed_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                scope,
+                str(sha1),
+                int(file_count or 0),
+                int(total_bytes or 0),
+                example_path,
+                now_ts,
+            ),
+        )
+
+
+def compute_cold_samples(conn: sqlite3.Connection, scope: str) -> None:
+    suffix = scope_suffix(scope)
+    now_ts = int(time.time())
+    conn.execute("DELETE FROM cold_samples_summary WHERE scope = ?", (scope,))
+    conn.execute("DELETE FROM cold_samples_by_path WHERE scope = ?", (scope,))
+    doc_clause = (
+        "lower(doc.path) NOT LIKE ? AND lower(doc.path) NOT LIKE ? "
+        "AND lower(doc.path) NOT LIKE ? AND lower(doc.path) NOT LIKE ? "
+        "AND doc.path NOT GLOB ?"
+    )
+    for cutoff_days in COLD_SAMPLE_CUTOFFS:
+        cutoff_ts = now_ts - (cutoff_days * 86400)
+        rows = conn.execute(
+            f"""
+            SELECT fi.path,
+                   fi.parent,
+                   fi.size,
+                   MAX(doc.mtime) AS last_used
+            FROM file_index{suffix} fi
+            LEFT JOIN doc_sample_refs{suffix} ds
+              ON ds.sample_path = fi.path
+              OR ds.sample_path = (fi.parent || '/' || fi.name)
+            LEFT JOIN file_index{suffix} doc
+              ON doc.path = ds.doc_path
+             AND doc.kind = 'ableton_doc'
+             AND {doc_clause}
+            WHERE fi.kind = 'media'
+            GROUP BY fi.path, fi.parent, fi.size
+            """
+        ,
+            BACKUP_EXCLUDE_PARAMS,
+        ).fetchall()
+        total_count = 0
+        total_bytes = 0
+        by_parent: dict[str, tuple[int, int]] = {}
+        for path, parent, size, last_used in rows:
+            last_used = int(last_used or 0)
+            if last_used >= cutoff_ts:
+                continue
+            total_count += 1
+            total_bytes += int(size or 0)
+            if parent:
+                current = by_parent.get(parent, (0, 0))
+                by_parent[parent] = (
+                    current[0] + 1,
+                    current[1] + int(size or 0),
+                )
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO cold_samples_summary
+                (scope, cutoff_days, sample_count, total_bytes, computed_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (scope, int(cutoff_days), int(total_count), int(total_bytes), now_ts),
+        )
+        for parent, (count, bytes_total) in by_parent.items():
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO cold_samples_by_path
+                    (scope, cutoff_days, parent_path, sample_count, total_bytes, computed_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    scope,
+                    int(cutoff_days),
+                    parent,
+                    int(count),
+                    int(bytes_total),
+                    now_ts,
+                ),
+            )
+
+
+def compute_routing_anomalies(conn: sqlite3.Connection, scope: str) -> None:
+    suffix = scope_suffix(scope)
+    now_ts = int(time.time())
+    conn.execute("DELETE FROM routing_anomalies WHERE scope = ?", (scope,))
+    rows = conn.execute(
+        f"""
+        SELECT doc_path,
+               SUM(CASE WHEN value IS NULL OR TRIM(value) = '' THEN 1 ELSE 0 END) AS missing_count
+        FROM ableton_routing{suffix}
+        GROUP BY doc_path
+        """
+    ).fetchall()
+    for doc_path, missing_count in rows:
+        missing_count = int(missing_count or 0)
+        if missing_count <= 0:
+            continue
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO routing_anomalies
+                (scope, path, issue, issue_value, computed_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (scope, doc_path, "missing_routing_value", missing_count, now_ts),
+        )
+
+
+def compute_device_pair_anomalies(conn: sqlite3.Connection, scope: str) -> None:
+    now_ts = int(time.time())
+    conn.execute("DELETE FROM device_pair_anomalies WHERE scope = ?", (scope,))
+    rows = conn.execute(
+        """
+        SELECT device_a, device_b, usage_count
+        FROM device_cooccurrence
+        WHERE scope = ? AND usage_count <= 2
+        ORDER BY usage_count ASC
+        """,
+        (scope,),
+    ).fetchall()
+    for device_a, device_b, usage_count in rows:
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO device_pair_anomalies
+                (scope, device_a, device_b, usage_count, computed_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (scope, device_a, device_b, int(usage_count or 0), now_ts),
+        )
+
+
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description="Compute Abletools analytics and store in DB.")
     ap.add_argument("db", help="Path to abletools_catalog.sqlite")
@@ -491,6 +752,12 @@ def main(argv: list[str]) -> int:
             compute_unreferenced_audio_by_path(conn, scope)
             compute_quality_issues(conn, scope)
             compute_device_usage_recent(conn, scope)
+            compute_set_activity_delta(conn, scope)
+            compute_set_growth_by_parent(conn, scope)
+            compute_sample_duplicate_groups(conn, scope)
+            compute_cold_samples(conn, scope)
+            compute_routing_anomalies(conn, scope)
+            compute_device_pair_anomalies(conn, scope)
 
     return 0
 

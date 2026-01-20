@@ -2741,7 +2741,7 @@ class InsightsPanel(tk.Frame):
 
         for col in range(2):
             grid.columnconfigure(col, weight=1)
-        for row in range(5):
+        for row in range(8):
             grid.rowconfigure(row, weight=1)
 
         self.health_text = self._make_box(grid, "Set Health (Worst)", 0, 0)
@@ -2754,6 +2754,12 @@ class InsightsPanel(tk.Frame):
         self.quality_text = self._make_box(grid, "Quality Flags", 3, 1)
         self.recent_devices_text = self._make_box(grid, "Recent Devices (30d)", 4, 0)
         self.device_pairs_text = self._make_box(grid, "Top Device Pairs", 4, 1)
+        self.activity_delta_text = self._make_box(grid, "Activity Deltas", 5, 0)
+        self.growth_text = self._make_box(grid, "Fastest Growing Folders", 5, 1)
+        self.duplicates_text = self._make_box(grid, "Sample Duplicates", 6, 0)
+        self.cold_text = self._make_box(grid, "Cold Samples", 6, 1)
+        self.routing_text = self._make_box(grid, "Routing Anomalies", 7, 0)
+        self.rare_pairs_text = self._make_box(grid, "Rare Device Pairs", 7, 1)
 
     def _make_box(self, master: tk.Frame, title: str, row: int, col: int) -> tk.Text:
         box = tk.Frame(master, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
@@ -2787,6 +2793,12 @@ class InsightsPanel(tk.Frame):
         quality = self.app.load_quality_issues(scope, limit=8)
         recent_devices = self.app.load_recent_device_usage(scope, window_days=30, limit=8)
         device_pairs = self.app.load_device_pairs(scope, limit=8)
+        activity_delta = self.app.load_activity_delta(scope)
+        growth = self.app.load_growth_by_parent(scope, window_days=30, limit=8)
+        duplicates = self.app.load_sample_duplicates(scope, limit=8)
+        cold_samples = self.app.load_cold_samples(scope, cutoff_days=90, limit=8)
+        routing = self.app.load_routing_anomalies(scope, limit=8)
+        rare_pairs = self.app.load_rare_device_pairs(scope, limit=8)
 
         self._fill_text(self.health_text, health or ["No data yet."])
         self._fill_text(self.hotspots_text, hotspots or ["No data yet."])
@@ -2818,6 +2830,12 @@ class InsightsPanel(tk.Frame):
         self._fill_text(self.quality_text, quality or ["No data yet."])
         self._fill_text(self.recent_devices_text, recent_devices or ["No data yet."])
         self._fill_text(self.device_pairs_text, device_pairs or ["No data yet."])
+        self._fill_text(self.activity_delta_text, activity_delta or ["No data yet."])
+        self._fill_text(self.growth_text, growth or ["No data yet."])
+        self._fill_text(self.duplicates_text, duplicates or ["No data yet."])
+        self._fill_text(self.cold_text, cold_samples or ["No data yet."])
+        self._fill_text(self.routing_text, routing or ["No data yet."])
+        self._fill_text(self.rare_pairs_text, rare_pairs or ["No data yet."])
 
     def _fill_text(self, widget: tk.Text, lines: list[str]) -> None:
         widget.configure(state="normal")
@@ -3820,6 +3838,141 @@ class AbletoolsUI(tk.Tk):
                 rows = conn.execute(
                     "SELECT device_a, device_b, usage_count FROM device_cooccurrence "
                     "WHERE scope = ? ORDER BY usage_count DESC LIMIT ?",
+                    (scope, limit),
+                ).fetchall()
+            return [f"{a} + {b} ({int(count)})" for a, b, count in rows]
+        except Exception:
+            return []
+
+    def load_activity_delta(self, scope: str) -> list[str]:
+        db_path = self.resolve_catalog_db_path()
+        if not db_path or not db_path.exists():
+            return []
+        try:
+            with sqlite3.connect(db_path) as conn:
+                rows = conn.execute(
+                    "SELECT window_days, current_sets, previous_sets, current_bytes, "
+                    "previous_bytes, delta_bytes "
+                    "FROM set_activity_delta WHERE scope = ? ORDER BY window_days ASC",
+                    (scope,),
+                ).fetchall()
+            lines = []
+            for days, current_sets, prev_sets, current_bytes, prev_bytes, delta_bytes in rows:
+                delta_label = f"{format_bytes(int(delta_bytes))}"
+                lines.append(
+                    f"{days}d: {int(current_sets)} sets "
+                    f"({format_bytes(int(current_bytes))}) "
+                    f"vs {int(prev_sets)} "
+                    f"({format_bytes(int(prev_bytes))}) -> {delta_label}"
+                )
+            return lines
+        except Exception:
+            return []
+
+    def load_growth_by_parent(
+        self, scope: str, window_days: int = 30, limit: int = 8
+    ) -> list[str]:
+        db_path = self.resolve_catalog_db_path()
+        if not db_path or not db_path.exists():
+            return []
+        try:
+            with sqlite3.connect(db_path) as conn:
+                rows = conn.execute(
+                    "SELECT parent_path, delta_bytes, current_sets "
+                    "FROM set_growth_by_parent "
+                    "WHERE scope = ? AND window_days = ? "
+                    "ORDER BY delta_bytes DESC LIMIT ?",
+                    (scope, window_days, limit),
+                ).fetchall()
+            return [
+                f"{path} (+{format_bytes(int(delta_bytes))}, {int(current_sets)} sets)"
+                for path, delta_bytes, current_sets in rows
+            ]
+        except Exception:
+            return []
+
+    def load_sample_duplicates(self, scope: str, limit: int = 8) -> list[str]:
+        db_path = self.resolve_catalog_db_path()
+        if not db_path or not db_path.exists():
+            return []
+        try:
+            with sqlite3.connect(db_path) as conn:
+                rows = conn.execute(
+                    "SELECT sha1, file_count, total_bytes, example_path "
+                    "FROM sample_duplicate_groups "
+                    "WHERE scope = ? ORDER BY total_bytes DESC LIMIT ?",
+                    (scope, limit),
+                ).fetchall()
+            results = []
+            for sha1, file_count, total_bytes, example_path in rows:
+                label = Path(example_path).name if example_path else "unknown"
+                results.append(
+                    f"{label} x{int(file_count)} ({format_bytes(int(total_bytes))})"
+                )
+            return results
+        except Exception:
+            return []
+
+    def load_cold_samples(
+        self, scope: str, cutoff_days: int = 90, limit: int = 8
+    ) -> list[str]:
+        db_path = self.resolve_catalog_db_path()
+        if not db_path or not db_path.exists():
+            return []
+        try:
+            with sqlite3.connect(db_path) as conn:
+                summary = conn.execute(
+                    "SELECT sample_count, total_bytes FROM cold_samples_summary "
+                    "WHERE scope = ? AND cutoff_days = ?",
+                    (scope, cutoff_days),
+                ).fetchone()
+                rows = conn.execute(
+                    "SELECT parent_path, sample_count, total_bytes FROM cold_samples_by_path "
+                    "WHERE scope = ? AND cutoff_days = ? "
+                    "ORDER BY total_bytes DESC LIMIT ?",
+                    (scope, cutoff_days, limit),
+                ).fetchall()
+            lines = []
+            if summary:
+                lines.append(
+                    f"{cutoff_days}d+: {int(summary[0])} samples "
+                    f"({format_bytes(int(summary[1]))})"
+                )
+            lines.extend(
+                f"{path} ({int(count)} files, {format_bytes(int(total))})"
+                for path, count, total in rows
+            )
+            return lines
+        except Exception:
+            return []
+
+    def load_routing_anomalies(self, scope: str, limit: int = 8) -> list[str]:
+        db_path = self.resolve_catalog_db_path()
+        if not db_path or not db_path.exists():
+            return []
+        try:
+            with sqlite3.connect(db_path) as conn:
+                rows = conn.execute(
+                    "SELECT path, issue_value FROM routing_anomalies "
+                    "WHERE scope = ? ORDER BY issue_value DESC LIMIT ?",
+                    (scope, limit),
+                ).fetchall()
+            return [
+                f"{Path(path).stem} (missing {int(count)})"
+                for path, count in rows
+            ]
+        except Exception:
+            return []
+
+    def load_rare_device_pairs(self, scope: str, limit: int = 8) -> list[str]:
+        db_path = self.resolve_catalog_db_path()
+        if not db_path or not db_path.exists():
+            return []
+        try:
+            with sqlite3.connect(db_path) as conn:
+                rows = conn.execute(
+                    "SELECT device_a, device_b, usage_count FROM device_pair_anomalies "
+                    "WHERE scope = ? ORDER BY usage_count ASC LIMIT ?",
                     (scope, limit),
                 ).fetchall()
             return [f"{a} + {b} ({int(count)})" for a, b, count in rows]

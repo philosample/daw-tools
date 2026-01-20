@@ -31,6 +31,12 @@
   - Quality flags (empty sets, missing refs, large counts).
   - Recent device usage (30d).
   - Top device pairs.
+  - Activity deltas vs previous window.
+  - Fastest-growing folders (by recent bytes).
+  - Sample duplicates (hash groups).
+  - Cold samples (not referenced recently).
+  - Routing anomalies.
+  - Rare device pairs.
 
 ## Prefs
 - Sources table: kind, source path, last modified.

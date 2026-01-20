@@ -266,343 +266,343 @@ items:
   - kind: function
     name: get_ingest_offset
     file: abletools_catalog_db.py
-    line: 483
+    line: 562
     note: 
     tests:
       - pytest -q tests/test_catalog_db.py
   - kind: function
     name: set_ingest_offset
     file: abletools_catalog_db.py
-    line: 490
+    line: 569
     note: 
     tests:
       - pytest -q tests/test_catalog_db.py
   - kind: function
     name: read_jsonl_incremental
     file: abletools_catalog_db.py
-    line: 497
+    line: 576
     note: 
     tests:
       - pytest -q tests/test_catalog_db.py
   - kind: function
     name: ensure_column
     file: abletools_catalog_db.py
-    line: 520
+    line: 599
     note: 
     tests:
       - pytest -q tests/test_catalog_db.py
   - kind: function
     name: ensure_file_index_columns
     file: abletools_catalog_db.py
-    line: 526
+    line: 605
     note: 
     tests:
       - pytest -q tests/test_catalog_db.py
   - kind: function
     name: ensure_ableton_docs_columns
     file: abletools_catalog_db.py
-    line: 552
+    line: 631
     note: 
     tests:
       - pytest -q tests/test_catalog_db.py
   - kind: function
     name: ensure_ableton_struct_columns
     file: abletools_catalog_db.py
-    line: 556
+    line: 635
     note: 
     tests:
       - pytest -q tests/test_catalog_db.py
   - kind: function
     name: load_file_index
     file: abletools_catalog_db.py
-    line: 564
+    line: 643
     note: 
     tests:
       - pytest -q tests/test_catalog_db.py
   - kind: function
     name: load_ableton_docs
     file: abletools_catalog_db.py
-    line: 645
+    line: 724
     note: 
     tests:
       - pytest -q tests/test_catalog_db.py
   - kind: function
     name: load_ableton_struct
     file: abletools_catalog_db.py
-    line: 754
+    line: 833
     note: 
     tests:
       - pytest -q tests/test_catalog_db.py
   - kind: function
     name: load_ableton_xml_nodes
     file: abletools_catalog_db.py
-    line: 878
+    line: 957
     note: 
     tests:
       - pytest -q tests/test_catalog_db.py
   - kind: function
     name: load_ableton_clip_details
     file: abletools_catalog_db.py
-    line: 928
+    line: 1007
     note: 
     tests:
       - pytest -q tests/test_catalog_db.py
   - kind: function
     name: load_ableton_device_params
     file: abletools_catalog_db.py
-    line: 975
+    line: 1054
     note: 
     tests:
       - pytest -q tests/test_catalog_db.py
   - kind: function
     name: load_ableton_routing_details
     file: abletools_catalog_db.py
-    line: 1022
+    line: 1101
     note: 
     tests:
       - pytest -q tests/test_catalog_db.py
   - kind: function
     name: load_refs_graph
     file: abletools_catalog_db.py
-    line: 1068
+    line: 1147
     note: 
     tests:
       - pytest -q tests/test_catalog_db.py
   - kind: function
     name: load_scan_state
     file: abletools_catalog_db.py
-    line: 1117
+    line: 1196
     note: 
     tests:
       - pytest -q tests/test_catalog_db.py
   - kind: function
     name: load_audio_analysis
     file: abletools_catalog_db.py
-    line: 1142
+    line: 1221
     note: 
     tests:
       - pytest -q tests/test_catalog_db.py
   - kind: function
     name: refresh_catalog_docs
     file: abletools_catalog_db.py
-    line: 1168
+    line: 1247
     note: 
     tests:
       - pytest -q tests/test_catalog_db.py
   - kind: function
     name: load_ableton_prefs
     file: abletools_catalog_db.py
-    line: 1195
+    line: 1274
     note: 
     tests:
       - pytest -q tests/test_catalog_db.py
   - kind: function
     name: load_plugin_index
     file: abletools_catalog_db.py
-    line: 1220
+    line: 1299
     note: 
     tests:
       - pytest -q tests/test_catalog_db.py
   - kind: function
     name: migrate_catalog
     file: abletools_catalog_db.py
-    line: 1244
+    line: 1323
     note: 
     tests:
       - pytest -q tests/test_catalog_db.py
   - kind: function
     name: parse_args
     file: abletools_catalog_db.py
-    line: 1300
+    line: 1379
     note: 
     tests:
       - pytest -q tests/test_catalog_db.py
   - kind: function
     name: main
     file: abletools_catalog_db.py
-    line: 1339
+    line: 1418
     note: 
     tests:
       - pytest -q tests/test_catalog_db.py
   - kind: function
     name: on_record
     file: abletools_catalog_db.py
-    line: 572
+    line: 651
     note: 
     tests:
       - pytest -q tests/test_catalog_db.py
   - kind: function
     name: flush
     file: abletools_catalog_db.py
-    line: 656
+    line: 735
     note: 
     tests:
       - pytest -q tests/test_catalog_db.py
   - kind: function
     name: on_record
     file: abletools_catalog_db.py
-    line: 707
+    line: 786
     note: 
     tests:
       - pytest -q tests/test_catalog_db.py
   - kind: function
     name: on_record
     file: abletools_catalog_db.py
-    line: 763
+    line: 842
     note: 
     tests:
       - pytest -q tests/test_catalog_db.py
   - kind: function
     name: flush
     file: abletools_catalog_db.py
-    line: 888
+    line: 967
     note: 
     tests:
       - pytest -q tests/test_catalog_db.py
   - kind: function
     name: on_record
     file: abletools_catalog_db.py
-    line: 902
+    line: 981
     note: 
     tests:
       - pytest -q tests/test_catalog_db.py
   - kind: function
     name: flush
     file: abletools_catalog_db.py
-    line: 938
+    line: 1017
     note: 
     tests:
       - pytest -q tests/test_catalog_db.py
   - kind: function
     name: on_record
     file: abletools_catalog_db.py
-    line: 952
+    line: 1031
     note: 
     tests:
       - pytest -q tests/test_catalog_db.py
   - kind: function
     name: flush
     file: abletools_catalog_db.py
-    line: 985
+    line: 1064
     note: 
     tests:
       - pytest -q tests/test_catalog_db.py
   - kind: function
     name: on_record
     file: abletools_catalog_db.py
-    line: 999
+    line: 1078
     note: 
     tests:
       - pytest -q tests/test_catalog_db.py
   - kind: function
     name: flush
     file: abletools_catalog_db.py
-    line: 1032
+    line: 1111
     note: 
     tests:
       - pytest -q tests/test_catalog_db.py
   - kind: function
     name: on_record
     file: abletools_catalog_db.py
-    line: 1046
+    line: 1125
     note: 
     tests:
       - pytest -q tests/test_catalog_db.py
   - kind: function
     name: on_record
     file: abletools_catalog_db.py
-    line: 1076
+    line: 1155
     note: 
     tests:
       - pytest -q tests/test_catalog_db.py
   - kind: query
     name: INSERT OR REPLACE INTO ingest_state (source, offset) VALUES (?, ?)
     file: abletools_catalog_db.py
-    line: 491
+    line: 570
     note: sql
     tests:
       - pytest -q tests/test_catalog_db.py
   - kind: query
     name: INSERT OR REPLACE INTO audio_analysis (scope, path, duration_sec, sample_rate, c
     file: abletools_catalog_db.py
-    line: 1145
+    line: 1224
     note: sql
     tests:
       - pytest -q tests/test_catalog_db.py
   - kind: query
     name: DELETE FROM catalog_docs WHERE scope = ?
     file: abletools_catalog_db.py
-    line: 1170
+    line: 1249
     note: sql
     tests:
       - pytest -q tests/test_catalog_db.py
   - kind: query
     name: INSERT OR REPLACE INTO catalog_docs (scope, path, ext, size, mtime, tracks_total
     file: abletools_catalog_db.py
-    line: 1171
+    line: 1250
     note: sql
     tests:
       - pytest -q tests/test_catalog_db.py
   - kind: query
     name: INSERT OR REPLACE INTO ableton_struct_meta{} (doc_path, parse_method, error) VAL
     file: abletools_catalog_db.py
-    line: 767
+    line: 846
     note: sql
     tests:
       - pytest -q tests/test_catalog_db.py
   - kind: query
     name: DELETE FROM ableton_tracks{} WHERE doc_path = ?
     file: abletools_catalog_db.py
-    line: 772
+    line: 851
     note: sql
     tests:
       - pytest -q tests/test_catalog_db.py
   - kind: query
     name: DELETE FROM ableton_clips{} WHERE doc_path = ?
     file: abletools_catalog_db.py
-    line: 773
+    line: 852
     note: sql
     tests:
       - pytest -q tests/test_catalog_db.py
   - kind: query
     name: DELETE FROM ableton_devices{} WHERE doc_path = ?
     file: abletools_catalog_db.py
-    line: 774
+    line: 853
     note: sql
     tests:
       - pytest -q tests/test_catalog_db.py
   - kind: query
     name: DELETE FROM ableton_routing{} WHERE doc_path = ?
     file: abletools_catalog_db.py
-    line: 775
+    line: 854
     note: sql
     tests:
       - pytest -q tests/test_catalog_db.py
   - kind: query
     name: INSERT OR REPLACE INTO ableton_prefs (kind, source, mtime, scanned_at, payload_j
     file: abletools_catalog_db.py
-    line: 1204
+    line: 1283
     note: sql
     tests:
       - pytest -q tests/test_catalog_db.py
   - kind: query
     name: SELECT offset FROM ingest_state WHERE source = ?
     file: abletools_catalog_db.py
-    line: 484
+    line: 563
     note: sql
     tests:
       - pytest -q tests/test_catalog_db.py
   - kind: query
     name: INSERT OR REPLACE INTO plugin_index (scope, path, name, vendor, version, format,
     file: abletools_catalog_db.py
-    line: 1225
+    line: 1304
     note: sql
     tests:
       - pytest -q tests/test_catalog_db.py
   - kind: query
     name: SELECT mtime FROM ableton_prefs WHERE kind = ? AND source = ?
     file: abletools_catalog_db.py
-    line: 1198
+    line: 1277
     note: sql
     tests:
       - pytest -q tests/test_catalog_db.py
@@ -899,14 +899,14 @@ items:
   - kind: class
     name: PreferencesPanel
     file: abletools_ui.py
-    line: 2829
+    line: 2847
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: class
     name: AbletoolsUI
     file: abletools_ui.py
-    line: 3119
+    line: 3137
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
@@ -1529,504 +1529,546 @@ items:
   - kind: function
     name: _make_box
     file: abletools_ui.py
-    line: 2758
+    line: 2764
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: refresh
     file: abletools_ui.py
-    line: 2777
+    line: 2783
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _fill_text
     file: abletools_ui.py
-    line: 2822
+    line: 2840
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: __init__
     file: abletools_ui.py
-    line: 2830
+    line: 2848
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _build
     file: abletools_ui.py
-    line: 2838
+    line: 2856
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: refresh
     file: abletools_ui.py
-    line: 2939
+    line: 2957
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _set_payload
     file: abletools_ui.py
-    line: 2972
+    line: 2990
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _set_status
     file: abletools_ui.py
-    line: 2978
+    line: 2996
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _on_select
     file: abletools_ui.py
-    line: 2981
+    line: 2999
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _extract_pref_fields
     file: abletools_ui.py
-    line: 3035
+    line: 3053
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _format_source_entry
     file: abletools_ui.py
-    line: 3064
+    line: 3082
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _summarize_payload
     file: abletools_ui.py
-    line: 3067
+    line: 3085
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _looks_like_path
     file: abletools_ui.py
-    line: 3109
+    line: 3127
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: __init__
     file: abletools_ui.py
-    line: 3120
+    line: 3138
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _style
     file: abletools_ui.py
-    line: 3145
+    line: 3163
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _build
     file: abletools_ui.py
-    line: 3232
+    line: 3250
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _build_nav
     file: abletools_ui.py
-    line: 3266
+    line: 3284
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _build_topbar
     file: abletools_ui.py
-    line: 3302
+    line: 3320
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _set_app_icon
     file: abletools_ui.py
-    line: 3333
+    line: 3351
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _load_logo
     file: abletools_ui.py
-    line: 3349
+    line: 3367
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _load_nav_logo
     file: abletools_ui.py
-    line: 3388
+    line: 3406
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: show_view
     file: abletools_ui.py
-    line: 3408
+    line: 3426
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: refresh_dashboard
     file: abletools_ui.py
-    line: 3443
+    line: 3461
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: scan_script_path
     file: abletools_ui.py
-    line: 3448
+    line: 3466
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: catalog_dir
     file: abletools_ui.py
-    line: 3451
+    line: 3469
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: default_scan_root
     file: abletools_ui.py
-    line: 3454
+    line: 3472
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: user_library_root
     file: abletools_ui.py
-    line: 3464
+    line: 3482
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: preferences_root
     file: abletools_ui.py
-    line: 3474
+    line: 3492
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: set_active_root
     file: abletools_ui.py
-    line: 3478
+    line: 3496
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: set_current_scope
     file: abletools_ui.py
-    line: 3486
+    line: 3504
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: resolve_db_path
     file: abletools_ui.py
-    line: 3490
+    line: 3508
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: resolve_catalog_db_path
     file: abletools_ui.py
-    line: 3495
+    line: 3513
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: resolve_prefs_db_path
     file: abletools_ui.py
-    line: 3498
+    line: 3516
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: resolve_scan_summary
     file: abletools_ui.py
-    line: 3501
+    line: 3519
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: load_catalog_stats
     file: abletools_ui.py
-    line: 3507
+    line: 3525
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: load_top_devices
     file: abletools_ui.py
-    line: 3542
+    line: 3560
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: load_top_plugins
     file: abletools_ui.py
-    line: 3567
+    line: 3585
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: load_top_chains
     file: abletools_ui.py
-    line: 3591
+    line: 3609
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: load_missing_refs_paths
     file: abletools_ui.py
-    line: 3607
+    line: 3625
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: load_missing_hotspots
     file: abletools_ui.py
-    line: 3623
+    line: 3641
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: load_chain_fingerprints
     file: abletools_ui.py
-    line: 3638
+    line: 3656
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: load_set_health
     file: abletools_ui.py
-    line: 3653
+    line: 3671
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: load_audio_footprint
     file: abletools_ui.py
-    line: 3675
+    line: 3693
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: load_set_storage_summary
     file: abletools_ui.py
-    line: 3696
+    line: 3714
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: load_set_activity
     file: abletools_ui.py
-    line: 3718
+    line: 3736
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: load_largest_sets
     file: abletools_ui.py
-    line: 3739
+    line: 3757
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: load_unreferenced_audio
     file: abletools_ui.py
-    line: 3754
+    line: 3772
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: load_quality_issues
     file: abletools_ui.py
-    line: 3773
+    line: 3791
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: load_recent_device_usage
     file: abletools_ui.py
-    line: 3796
+    line: 3814
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: load_device_pairs
     file: abletools_ui.py
-    line: 3814
+    line: 3832
+    note: 
+    tests:
+      - pytest -q tests/test_ui_helpers.py
+  - kind: function
+    name: load_activity_delta
+    file: abletools_ui.py
+    line: 3847
+    note: 
+    tests:
+      - pytest -q tests/test_ui_helpers.py
+  - kind: function
+    name: load_growth_by_parent
+    file: abletools_ui.py
+    line: 3872
+    note: 
+    tests:
+      - pytest -q tests/test_ui_helpers.py
+  - kind: function
+    name: load_sample_duplicates
+    file: abletools_ui.py
+    line: 3894
+    note: 
+    tests:
+      - pytest -q tests/test_ui_helpers.py
+  - kind: function
+    name: load_cold_samples
+    file: abletools_ui.py
+    line: 3916
+    note: 
+    tests:
+      - pytest -q tests/test_ui_helpers.py
+  - kind: function
+    name: load_routing_anomalies
+    file: abletools_ui.py
+    line: 3949
+    note: 
+    tests:
+      - pytest -q tests/test_ui_helpers.py
+  - kind: function
+    name: load_rare_device_pairs
+    file: abletools_ui.py
+    line: 3967
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: load_dashboard_focus
     file: abletools_ui.py
-    line: 3829
+    line: 3982
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: backup_catalog_files
     file: abletools_ui.py
-    line: 3899
+    line: 4052
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: cleanup_catalog
     file: abletools_ui.py
-    line: 3935
+    line: 4088
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: optimize_catalog_db
     file: abletools_ui.py
-    line: 3938
+    line: 4091
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: rebuild_catalog_db
     file: abletools_ui.py
-    line: 3955
+    line: 4108
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _open_db_location
     file: abletools_ui.py
-    line: 3970
+    line: 4123
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: refresh_catalog_db
     file: abletools_ui.py
-    line: 3981
+    line: 4134
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _refresh_catalog_db_worker
     file: abletools_ui.py
-    line: 3987
+    line: 4140
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: run_analytics
     file: abletools_ui.py
-    line: 4022
+    line: 4175
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: run_targeted_scan
     file: abletools_ui.py
-    line: 4066
+    line: 4219
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: get_known_sets
     file: abletools_ui.py
-    line: 4115
+    line: 4268
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: audit_zero_tracks
     file: abletools_ui.py
-    line: 4149
+    line: 4302
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: audit_missing_refs
     file: abletools_ui.py
-    line: 4191
+    line: 4344
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: run_maintenance
     file: abletools_ui.py
-    line: 4228
+    line: 4381
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _refresh_prefs_cache
     file: abletools_ui.py
-    line: 4257
+    line: 4410
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: ensure_catalog_db
     file: abletools_ui.py
-    line: 4283
+    line: 4436
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _init_active_root
     file: abletools_ui.py
-    line: 4313
+    line: 4466
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: log_ui_error
     file: abletools_ui.py
-    line: 4317
+    line: 4470
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _setup_logging
     file: abletools_ui.py
-    line: 4320
+    line: 4473
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _rotate_log
     file: abletools_ui.py
-    line: 4337
+    line: 4490
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _log_event
     file: abletools_ui.py
-    line: 4366
+    line: 4519
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _scan_app_log
     file: abletools_ui.py
-    line: 4370
+    line: 4523
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
@@ -2131,14 +2173,14 @@ items:
   - kind: function
     name: _run
     file: abletools_ui.py
-    line: 4028
+    line: 4181
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: function
     name: _run
     file: abletools_ui.py
-    line: 4088
+    line: 4241
     note: 
     tests:
       - pytest -q tests/test_ui_helpers.py
@@ -2159,21 +2201,21 @@ items:
   - kind: query
     name: SELECT kind, source, mtime FROM ableton_prefs ORDER BY mtime DESC
     file: abletools_ui.py
-    line: 2951
+    line: 2969
     note: sql
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: query
     name: SELECT device_name, COUNT(*) FROM doc_device_hints WHERE scope != 'preferences' 
     file: abletools_ui.py
-    line: 3556
+    line: 3574
     note: sql
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: query
     name: SELECT ref_path, COUNT(*) AS cnt, MIN(src) AS sample_src FROM refs_graph{} WHERE
     file: abletools_ui.py
-    line: 4207
+    line: 4360
     note: sql
     tests:
       - pytest -q tests/test_ui_helpers.py
@@ -2187,119 +2229,168 @@ items:
   - kind: query
     name: SELECT payload_json FROM ableton_prefs WHERE kind = ? AND source = ?
     file: abletools_ui.py
-    line: 2992
+    line: 3010
     note: sql
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: query
     name: SELECT device_name, usage_count FROM device_usage WHERE scope != 'preferences' O
     file: abletools_ui.py
-    line: 3548
+    line: 3566
     note: sql
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: query
     name: SELECT COALESCE(name, path) AS label, COALESCE(vendor, '') AS vendor, COUNT(*) F
     file: abletools_ui.py
-    line: 3573
+    line: 3591
     note: sql
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: query
     name: SELECT chain, usage_count FROM device_chain_stats WHERE scope != 'preferences' O
     file: abletools_ui.py
-    line: 3597
+    line: 3615
     note: sql
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: query
     name: SELECT ref_parent, missing_count FROM missing_refs_by_path WHERE scope != 'prefe
     file: abletools_ui.py
-    line: 3613
+    line: 3631
     note: sql
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: query
     name: SELECT ref_parent, missing_count FROM missing_refs_by_path WHERE scope = ? ORDER
     file: abletools_ui.py
-    line: 3629
+    line: 3647
     note: sql
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: query
     name: SELECT chain, usage_count FROM device_chain_stats WHERE scope = ? ORDER BY usage
     file: abletools_ui.py
-    line: 3644
+    line: 3662
     note: sql
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: query
     name: SELECT path, health_score, missing_refs_count, devices_count, samples_count FROM
     file: abletools_ui.py
-    line: 3659
+    line: 3677
     note: sql
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: query
     name: SELECT total_media_bytes, referenced_media_bytes, unreferenced_media_bytes FROM 
     file: abletools_ui.py
-    line: 3681
+    line: 3699
     note: sql
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: query
     name: SELECT total_sets, total_set_bytes, non_backup_sets, non_backup_bytes FROM set_s
     file: abletools_ui.py
-    line: 3702
+    line: 3720
     note: sql
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: query
     name: SELECT window_days, set_count, total_bytes FROM set_activity_stats WHERE scope =
     file: abletools_ui.py
-    line: 3724
+    line: 3742
     note: sql
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: query
     name: SELECT path, size_bytes FROM set_size_top WHERE scope = ? ORDER BY size_bytes DE
     file: abletools_ui.py
-    line: 3745
+    line: 3763
     note: sql
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: query
     name: SELECT parent_path, file_count, total_bytes FROM unreferenced_audio_by_path WHER
     file: abletools_ui.py
-    line: 3760
+    line: 3778
     note: sql
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: query
     name: SELECT issue, path, issue_value FROM quality_issues WHERE scope = ? ORDER BY iss
     file: abletools_ui.py
-    line: 3779
+    line: 3797
     note: sql
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: query
     name: SELECT device_name, usage_count FROM device_usage_recent WHERE scope = ? AND win
     file: abletools_ui.py
-    line: 3804
+    line: 3822
     note: sql
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: query
     name: SELECT device_a, device_b, usage_count FROM device_cooccurrence WHERE scope = ? 
     file: abletools_ui.py
-    line: 3820
+    line: 3838
+    note: sql
+    tests:
+      - pytest -q tests/test_ui_helpers.py
+  - kind: query
+    name: SELECT window_days, current_sets, previous_sets, current_bytes, previous_bytes, 
+    file: abletools_ui.py
+    line: 3853
+    note: sql
+    tests:
+      - pytest -q tests/test_ui_helpers.py
+  - kind: query
+    name: SELECT parent_path, delta_bytes, current_sets FROM set_growth_by_parent WHERE sc
+    file: abletools_ui.py
+    line: 3880
+    note: sql
+    tests:
+      - pytest -q tests/test_ui_helpers.py
+  - kind: query
+    name: SELECT sha1, file_count, total_bytes, example_path FROM sample_duplicate_groups 
+    file: abletools_ui.py
+    line: 3900
+    note: sql
+    tests:
+      - pytest -q tests/test_ui_helpers.py
+  - kind: query
+    name: SELECT sample_count, total_bytes FROM cold_samples_summary WHERE scope = ? AND c
+    file: abletools_ui.py
+    line: 3924
+    note: sql
+    tests:
+      - pytest -q tests/test_ui_helpers.py
+  - kind: query
+    name: SELECT parent_path, sample_count, total_bytes FROM cold_samples_by_path WHERE sc
+    file: abletools_ui.py
+    line: 3929
+    note: sql
+    tests:
+      - pytest -q tests/test_ui_helpers.py
+  - kind: query
+    name: SELECT path, issue_value FROM routing_anomalies WHERE scope = ? ORDER BY issue_v
+    file: abletools_ui.py
+    line: 3955
+    note: sql
+    tests:
+      - pytest -q tests/test_ui_helpers.py
+  - kind: query
+    name: SELECT device_a, device_b, usage_count FROM device_pair_anomalies WHERE scope = 
+    file: abletools_ui.py
+    line: 3973
     note: sql
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: query
     name: SELECT path FROM file_index{} WHERE {} AND {}
     file: abletools_ui.py
-    line: 3925
+    line: 4078
     note: sql
     tests:
       - pytest -q tests/test_ui_helpers.py
@@ -2341,42 +2432,42 @@ items:
   - kind: query
     name: SELECT d.path, d.tracks_total, d.clips_total, d.error, f.size FROM ableton_docs{
     file: abletools_ui.py
-    line: 4162
+    line: 4315
     note: sql
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: query
     name: SELECT SUM(cnt) FROM (SELECT COUNT(*) AS cnt FROM file_index UNION ALL SELECT CO
     file: abletools_ui.py
-    line: 3514
+    line: 3532
     note: sql
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: query
     name: SELECT SUM(cnt) FROM (SELECT COUNT(*) AS cnt FROM ableton_docs UNION ALL SELECT 
     file: abletools_ui.py
-    line: 3520
+    line: 3538
     note: sql
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: query
     name: SELECT SUM(cnt) FROM (SELECT COUNT(*) AS cnt FROM refs_graph UNION ALL SELECT CO
     file: abletools_ui.py
-    line: 3526
+    line: 3544
     note: sql
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: query
     name: SELECT SUM(cnt) FROM (SELECT COUNT(*) AS cnt FROM refs_graph WHERE ref_exists = 
     file: abletools_ui.py
-    line: 3532
+    line: 3550
     note: sql
     tests:
       - pytest -q tests/test_ui_helpers.py
   - kind: query
     name: SELECT COUNT(*) FROM file_index{} WHERE ext IN ('.als', '.alc')
     file: abletools_ui.py
-    line: 3856
+    line: 4009
     note: sql
     tests:
       - pytest -q tests/test_ui_helpers.py
@@ -2467,399 +2558,588 @@ items:
   - kind: function
     name: scope_suffix
     file: abletools_analytics.py
-    line: 31
+    line: 32
     note: 
     tests:
       - python3 abletools_analytics.py --help
   - kind: function
     name: compute_device_usage
     file: abletools_analytics.py
-    line: 35
+    line: 36
     note: 
     tests:
       - python3 abletools_analytics.py --help
   - kind: function
     name: compute_device_chains
     file: abletools_analytics.py
-    line: 52
+    line: 53
     note: 
     tests:
       - python3 abletools_analytics.py --help
   - kind: function
     name: compute_device_cooccurrence
     file: abletools_analytics.py
-    line: 84
+    line: 85
     note: 
     tests:
       - python3 abletools_analytics.py --help
   - kind: function
     name: compute_doc_complexity
     file: abletools_analytics.py
-    line: 115
+    line: 116
     note: 
     tests:
       - python3 abletools_analytics.py --help
   - kind: function
     name: compute_library_growth
     file: abletools_analytics.py
-    line: 139
+    line: 140
     note: 
     tests:
       - python3 abletools_analytics.py --help
   - kind: function
     name: compute_missing_refs_by_path
     file: abletools_analytics.py
-    line: 164
+    line: 165
     note: 
     tests:
       - python3 abletools_analytics.py --help
   - kind: function
     name: compute_set_health
     file: abletools_analytics.py
-    line: 188
+    line: 189
     note: 
     tests:
       - python3 abletools_analytics.py --help
   - kind: function
     name: compute_audio_footprint
     file: abletools_analytics.py
-    line: 227
+    line: 228
     note: 
     tests:
       - python3 abletools_analytics.py --help
   - kind: function
     name: compute_set_storage_summary
     file: abletools_analytics.py
-    line: 258
+    line: 259
     note: 
     tests:
       - python3 abletools_analytics.py --help
   - kind: function
     name: compute_set_activity_stats
     file: abletools_analytics.py
-    line: 289
+    line: 290
     note: 
     tests:
       - python3 abletools_analytics.py --help
   - kind: function
     name: compute_set_size_top
     file: abletools_analytics.py
-    line: 316
+    line: 317
     note: 
     tests:
       - python3 abletools_analytics.py --help
   - kind: function
     name: compute_unreferenced_audio_by_path
     file: abletools_analytics.py
-    line: 343
+    line: 344
     note: 
     tests:
       - python3 abletools_analytics.py --help
   - kind: function
     name: compute_quality_issues
     file: abletools_analytics.py
-    line: 375
+    line: 376
     note: 
     tests:
       - python3 abletools_analytics.py --help
   - kind: function
     name: compute_device_usage_recent
     file: abletools_analytics.py
-    line: 439
+    line: 440
+    note: 
+    tests:
+      - python3 abletools_analytics.py --help
+  - kind: function
+    name: compute_set_activity_delta
+    file: abletools_analytics.py
+    line: 469
+    note: 
+    tests:
+      - python3 abletools_analytics.py --help
+  - kind: function
+    name: compute_set_growth_by_parent
+    file: abletools_analytics.py
+    line: 519
+    note: 
+    tests:
+      - python3 abletools_analytics.py --help
+  - kind: function
+    name: compute_sample_duplicate_groups
+    file: abletools_analytics.py
+    line: 574
+    note: 
+    tests:
+      - python3 abletools_analytics.py --help
+  - kind: function
+    name: compute_cold_samples
+    file: abletools_analytics.py
+    line: 607
+    note: 
+    tests:
+      - python3 abletools_analytics.py --help
+  - kind: function
+    name: compute_routing_anomalies
+    file: abletools_analytics.py
+    line: 680
+    note: 
+    tests:
+      - python3 abletools_analytics.py --help
+  - kind: function
+    name: compute_device_pair_anomalies
+    file: abletools_analytics.py
+    line: 706
     note: 
     tests:
       - python3 abletools_analytics.py --help
   - kind: function
     name: main
     file: abletools_analytics.py
-    line: 468
+    line: 729
     note: 
     tests:
       - python3 abletools_analytics.py --help
   - kind: query
     name: DELETE FROM doc_complexity WHERE scope = ?
     file: abletools_analytics.py
-    line: 118
+    line: 119
     note: sql
     tests:
       - python3 abletools_analytics.py --help
   - kind: query
     name: INSERT OR REPLACE INTO doc_complexity (scope, path, tracks_total, clips_total, d
     file: abletools_analytics.py
-    line: 119
+    line: 120
     note: sql
     tests:
       - python3 abletools_analytics.py --help
   - kind: query
     name: INSERT OR REPLACE INTO library_growth (scope, snapshot_at, file_count, total_byt
     file: abletools_analytics.py
-    line: 154
+    line: 155
     note: sql
     tests:
       - python3 abletools_analytics.py --help
   - kind: query
     name: DELETE FROM missing_refs_by_path WHERE scope = ?
     file: abletools_analytics.py
-    line: 176
+    line: 177
     note: sql
     tests:
       - python3 abletools_analytics.py --help
   - kind: query
     name: DELETE FROM set_health WHERE scope = ?
     file: abletools_analytics.py
-    line: 190
+    line: 191
     note: sql
     tests:
       - python3 abletools_analytics.py --help
   - kind: query
     name: INSERT OR REPLACE INTO audio_footprint (scope, total_media_bytes, referenced_med
     file: abletools_analytics.py
-    line: 248
+    line: 249
     note: sql
     tests:
       - python3 abletools_analytics.py --help
   - kind: query
     name: INSERT OR REPLACE INTO set_storage_summary (scope, total_sets, total_set_bytes, 
     file: abletools_analytics.py
-    line: 272
+    line: 273
     note: sql
     tests:
       - python3 abletools_analytics.py --help
   - kind: query
     name: DELETE FROM set_activity_stats WHERE scope = ?
     file: abletools_analytics.py
-    line: 292
+    line: 293
     note: sql
     tests:
       - python3 abletools_analytics.py --help
   - kind: query
     name: DELETE FROM set_size_top WHERE scope = ?
     file: abletools_analytics.py
-    line: 321
+    line: 322
     note: sql
     tests:
       - python3 abletools_analytics.py --help
   - kind: query
     name: DELETE FROM unreferenced_audio_by_path WHERE scope = ?
     file: abletools_analytics.py
-    line: 346
+    line: 347
     note: sql
     tests:
       - python3 abletools_analytics.py --help
   - kind: query
     name: DELETE FROM quality_issues WHERE scope = ?
     file: abletools_analytics.py
-    line: 377
+    line: 378
     note: sql
     tests:
       - python3 abletools_analytics.py --help
   - kind: query
     name: DELETE FROM device_usage_recent WHERE scope = ?
     file: abletools_analytics.py
-    line: 442
+    line: 443
+    note: sql
+    tests:
+      - python3 abletools_analytics.py --help
+  - kind: query
+    name: DELETE FROM set_activity_delta WHERE scope = ?
+    file: abletools_analytics.py
+    line: 472
+    note: sql
+    tests:
+      - python3 abletools_analytics.py --help
+  - kind: query
+    name: DELETE FROM set_growth_by_parent WHERE scope = ?
+    file: abletools_analytics.py
+    line: 522
+    note: sql
+    tests:
+      - python3 abletools_analytics.py --help
+  - kind: query
+    name: DELETE FROM sample_duplicate_groups WHERE scope = ?
+    file: abletools_analytics.py
+    line: 577
+    note: sql
+    tests:
+      - python3 abletools_analytics.py --help
+  - kind: query
+    name: DELETE FROM cold_samples_summary WHERE scope = ?
+    file: abletools_analytics.py
+    line: 610
+    note: sql
+    tests:
+      - python3 abletools_analytics.py --help
+  - kind: query
+    name: DELETE FROM cold_samples_by_path WHERE scope = ?
+    file: abletools_analytics.py
+    line: 611
+    note: sql
+    tests:
+      - python3 abletools_analytics.py --help
+  - kind: query
+    name: DELETE FROM routing_anomalies WHERE scope = ?
+    file: abletools_analytics.py
+    line: 683
+    note: sql
+    tests:
+      - python3 abletools_analytics.py --help
+  - kind: query
+    name: DELETE FROM device_pair_anomalies WHERE scope = ?
+    file: abletools_analytics.py
+    line: 708
     note: sql
     tests:
       - python3 abletools_analytics.py --help
   - kind: query
     name: INSERT OR REPLACE INTO device_usage (scope, device_name, usage_count, computed_a
     file: abletools_analytics.py
-    line: 42
+    line: 43
     note: sql
     tests:
       - python3 abletools_analytics.py --help
   - kind: query
     name: INSERT OR REPLACE INTO device_chain_stats (scope, chain, chain_len, usage_count,
     file: abletools_analytics.py
-    line: 74
+    line: 75
     note: sql
     tests:
       - python3 abletools_analytics.py --help
   - kind: query
     name: INSERT OR REPLACE INTO device_cooccurrence (scope, device_a, device_b, usage_cou
     file: abletools_analytics.py
-    line: 105
+    line: 106
     note: sql
     tests:
       - python3 abletools_analytics.py --help
   - kind: query
     name: INSERT OR REPLACE INTO missing_refs_by_path (scope, ref_parent, missing_count, c
     file: abletools_analytics.py
-    line: 178
+    line: 179
     note: sql
     tests:
       - python3 abletools_analytics.py --help
   - kind: query
     name: INSERT OR REPLACE INTO set_health (scope, path, tracks_total, clips_total, devic
     file: abletools_analytics.py
-    line: 206
+    line: 207
     note: sql
     tests:
       - python3 abletools_analytics.py --help
   - kind: query
     name: INSERT OR REPLACE INTO set_activity_stats (scope, window_days, set_count, total_
     file: abletools_analytics.py
-    line: 306
+    line: 307
     note: sql
     tests:
       - python3 abletools_analytics.py --help
   - kind: query
     name: INSERT OR REPLACE INTO set_size_top (scope, path, size_bytes, mtime, computed_at
     file: abletools_analytics.py
-    line: 333
+    line: 334
     note: sql
     tests:
       - python3 abletools_analytics.py --help
   - kind: query
     name: INSERT OR REPLACE INTO unreferenced_audio_by_path (scope, parent_path, file_coun
     file: abletools_analytics.py
-    line: 365
+    line: 366
+    note: sql
+    tests:
+      - python3 abletools_analytics.py --help
+  - kind: query
+    name: INSERT OR REPLACE INTO set_activity_delta (scope, window_days, current_sets, pre
+    file: abletools_analytics.py
+    line: 500
+    note: sql
+    tests:
+      - python3 abletools_analytics.py --help
+  - kind: query
+    name: INSERT OR REPLACE INTO sample_duplicate_groups (scope, sha1, file_count, total_b
+    file: abletools_analytics.py
+    line: 590
+    note: sql
+    tests:
+      - python3 abletools_analytics.py --help
+  - kind: query
+    name: INSERT OR REPLACE INTO cold_samples_summary (scope, cutoff_days, sample_count, t
+    file: abletools_analytics.py
+    line: 654
+    note: sql
+    tests:
+      - python3 abletools_analytics.py --help
+  - kind: query
+    name: INSERT OR REPLACE INTO routing_anomalies (scope, path, issue, issue_value, compu
+    file: abletools_analytics.py
+    line: 696
+    note: sql
+    tests:
+      - python3 abletools_analytics.py --help
+  - kind: query
+    name: INSERT OR REPLACE INTO device_pair_anomalies (scope, device_a, device_b, usage_c
+    file: abletools_analytics.py
+    line: 719
     note: sql
     tests:
       - python3 abletools_analytics.py --help
   - kind: query
     name: SELECT device_hint, COUNT(*) FROM doc_device_hints{} GROUP BY device_hint
     file: abletools_analytics.py
-    line: 37
+    line: 38
     note: sql
     tests:
       - python3 abletools_analytics.py --help
   - kind: query
     name: SELECT doc_path, device_hint FROM doc_device_hints{}
     file: abletools_analytics.py
-    line: 87
+    line: 88
     note: sql
     tests:
       - python3 abletools_analytics.py --help
   - kind: query
     name: SELECT COUNT(*) AS file_count, COALESCE(SUM(size), 0) AS total_bytes, COALESCE(S
     file: abletools_analytics.py
-    line: 142
+    line: 143
     note: sql
     tests:
       - python3 abletools_analytics.py --help
   - kind: query
     name: SELECT ref_path FROM refs_graph{} WHERE ref_exists = 0
     file: abletools_analytics.py
-    line: 166
+    line: 167
     note: sql
     tests:
       - python3 abletools_analytics.py --help
   - kind: query
     name: SELECT path, tracks_total, clips_total, devices_count, samples_count, missing_re
     file: abletools_analytics.py
-    line: 191
+    line: 192
     note: sql
     tests:
       - python3 abletools_analytics.py --help
   - kind: query
     name: SELECT COUNT(*), COALESCE(SUM(size), 0) FROM file_index{} WHERE kind = 'ableton_
     file: abletools_analytics.py
-    line: 261
+    line: 262
     note: sql
     tests:
       - python3 abletools_analytics.py --help
   - kind: query
     name: SELECT COUNT(*), COALESCE(SUM(size), 0) FROM file_index{} WHERE kind = 'ableton_
     file: abletools_analytics.py
-    line: 265
+    line: 266
     note: sql
     tests:
       - python3 abletools_analytics.py --help
   - kind: query
     name: SELECT path, size, mtime FROM file_index{} WHERE kind = 'ableton_doc' AND {} ORD
     file: abletools_analytics.py
-    line: 322
+    line: 323
     note: sql
     tests:
       - python3 abletools_analytics.py --help
   - kind: query
     name: SELECT parent, COUNT(*), COALESCE(SUM(size), 0) FROM file_index{} fi WHERE fi.ki
     file: abletools_analytics.py
-    line: 347
+    line: 348
     note: sql
     tests:
       - python3 abletools_analytics.py --help
   - kind: query
     name: SELECT path, tracks_total, clips_total, devices_count, samples_count, missing_re
     file: abletools_analytics.py
-    line: 378
+    line: 379
     note: sql
     tests:
       - python3 abletools_analytics.py --help
   - kind: query
     name: INSERT OR REPLACE INTO quality_issues (scope, path, issue, issue_value, computed
     file: abletools_analytics.py
-    line: 393
+    line: 394
     note: sql
     tests:
       - python3 abletools_analytics.py --help
   - kind: query
     name: INSERT OR REPLACE INTO quality_issues (scope, path, issue, issue_value, computed
     file: abletools_analytics.py
-    line: 402
+    line: 403
     note: sql
     tests:
       - python3 abletools_analytics.py --help
   - kind: query
     name: INSERT OR REPLACE INTO quality_issues (scope, path, issue, issue_value, computed
     file: abletools_analytics.py
-    line: 411
+    line: 412
     note: sql
     tests:
       - python3 abletools_analytics.py --help
   - kind: query
     name: INSERT OR REPLACE INTO quality_issues (scope, path, issue, issue_value, computed
     file: abletools_analytics.py
-    line: 420
+    line: 421
     note: sql
     tests:
       - python3 abletools_analytics.py --help
   - kind: query
     name: INSERT OR REPLACE INTO quality_issues (scope, path, issue, issue_value, computed
     file: abletools_analytics.py
-    line: 429
+    line: 430
     note: sql
     tests:
       - python3 abletools_analytics.py --help
   - kind: query
     name: INSERT OR REPLACE INTO device_usage_recent (scope, window_days, device_name, usa
     file: abletools_analytics.py
-    line: 458
+    line: 459
+    note: sql
+    tests:
+      - python3 abletools_analytics.py --help
+  - kind: query
+    name: INSERT OR REPLACE INTO set_growth_by_parent (scope, window_days, parent_path, cu
+    file: abletools_analytics.py
+    line: 553
+    note: sql
+    tests:
+      - python3 abletools_analytics.py --help
+  - kind: query
+    name: SELECT sha1, COUNT(*) AS file_count, COALESCE(SUM(size), 0) AS total_bytes, MIN(
+    file: abletools_analytics.py
+    line: 578
+    note: sql
+    tests:
+      - python3 abletools_analytics.py --help
+  - kind: query
+    name: INSERT OR REPLACE INTO cold_samples_by_path (scope, cutoff_days, parent_path, sa
+    file: abletools_analytics.py
+    line: 663
+    note: sql
+    tests:
+      - python3 abletools_analytics.py --help
+  - kind: query
+    name: SELECT doc_path, SUM(CASE WHEN value IS NULL OR TRIM(value) = '' THEN 1 ELSE 0 E
+    file: abletools_analytics.py
+    line: 684
+    note: sql
+    tests:
+      - python3 abletools_analytics.py --help
+  - kind: query
+    name: SELECT device_a, device_b, usage_count FROM device_cooccurrence WHERE scope = ? 
+    file: abletools_analytics.py
+    line: 709
     note: sql
     tests:
       - python3 abletools_analytics.py --help
   - kind: query
     name: SELECT doc_path, ord, device_name FROM doc_device_sequence{} ORDER BY doc_path, 
     file: abletools_analytics.py
-    line: 56
+    line: 57
     note: sql
     tests:
       - python3 abletools_analytics.py --help
   - kind: query
     name: SELECT COALESCE(SUM(size), 0) FROM file_index{} WHERE kind = 'media'
     file: abletools_analytics.py
-    line: 230
+    line: 231
     note: sql
     tests:
       - python3 abletools_analytics.py --help
   - kind: query
     name: SELECT COALESCE(SUM(fi.size), 0) FROM file_index{} fi WHERE EXISTS ( SELECT 1 FR
     file: abletools_analytics.py
-    line: 233
+    line: 234
     note: sql
     tests:
       - python3 abletools_analytics.py --help
   - kind: query
     name: SELECT COUNT(*), COALESCE(SUM(size), 0) FROM file_index{} WHERE kind = 'ableton_
     file: abletools_analytics.py
-    line: 295
+    line: 296
     note: sql
     tests:
       - python3 abletools_analytics.py --help
   - kind: query
     name: SELECT dh.device_hint, COUNT(*) FROM doc_device_hints{} dh JOIN file_index{} fi 
     file: abletools_analytics.py
-    line: 445
+    line: 446
+    note: sql
+    tests:
+      - python3 abletools_analytics.py --help
+  - kind: query
+    name: SELECT COUNT(*), COALESCE(SUM(size), 0) FROM file_index{} WHERE kind = 'ableton_
+    file: abletools_analytics.py
+    line: 476
+    note: sql
+    tests:
+      - python3 abletools_analytics.py --help
+  - kind: query
+    name: SELECT COUNT(*), COALESCE(SUM(size), 0) FROM file_index{} WHERE kind = 'ableton_
+    file: abletools_analytics.py
+    line: 486
+    note: sql
+    tests:
+      - python3 abletools_analytics.py --help
+  - kind: query
+    name: SELECT parent, SUM(CASE WHEN mtime >= ? THEN 1 ELSE 0 END) AS current_sets, SUM(
+    file: abletools_analytics.py
+    line: 526
+    note: sql
+    tests:
+      - python3 abletools_analytics.py --help
+  - kind: query
+    name: SELECT fi.path, fi.parent, fi.size, MAX(doc.mtime) AS last_used FROM file_index{
+    file: abletools_analytics.py
+    line: 619
     note: sql
     tests:
       - python3 abletools_analytics.py --help
