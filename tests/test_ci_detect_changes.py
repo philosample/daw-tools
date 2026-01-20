@@ -37,9 +37,9 @@ def test_parse_changed_lines() -> None:
 
 def test_extract_sql_strings_variants() -> None:
     text = (
-        "q = \"SELECT * FROM table\"\n"
-        "q2 = f\"SELECT {1} FROM table\"\n"
-        "q3 = \"SELECT \" + \"name FROM table\"\n"
+        "conn.execute(\"SELECT * FROM table\")\n"
+        "conn.execute(f\"SELECT {1} FROM table\")\n"
+        "conn.execute(\"SELECT \" + \"name FROM table\")\n"
     )
     queries = detect.extract_sql_strings(text)
     assert any("SELECT * FROM table" in q[0] for q in queries)
