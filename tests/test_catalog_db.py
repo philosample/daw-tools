@@ -50,5 +50,9 @@ def test_analytics_tables_exist() -> None:
         assert "missing_refs_by_path" in {
             row[0] for row in conn.execute("SELECT name FROM sqlite_master")
         }
+        assert "set_health" in {row[0] for row in conn.execute("SELECT name FROM sqlite_master")}
+        assert "audio_footprint" in {
+            row[0] for row in conn.execute("SELECT name FROM sqlite_master")
+        }
     finally:
         conn.close()

@@ -384,6 +384,28 @@ def create_schema(conn: sqlite3.Connection) -> None:
             PRIMARY KEY (scope, ref_parent)
         );
 
+        CREATE TABLE IF NOT EXISTS set_health (
+            scope TEXT NOT NULL,
+            path TEXT NOT NULL,
+            tracks_total INTEGER,
+            clips_total INTEGER,
+            devices_count INTEGER,
+            samples_count INTEGER,
+            missing_refs_count INTEGER,
+            health_score REAL NOT NULL,
+            computed_at INTEGER NOT NULL,
+            PRIMARY KEY (scope, path)
+        );
+
+        CREATE TABLE IF NOT EXISTS audio_footprint (
+            scope TEXT NOT NULL,
+            total_media_bytes INTEGER NOT NULL,
+            referenced_media_bytes INTEGER NOT NULL,
+            unreferenced_media_bytes INTEGER NOT NULL,
+            computed_at INTEGER NOT NULL,
+            PRIMARY KEY (scope)
+        );
+
         CREATE INDEX IF NOT EXISTS idx_catalog_docs_scope ON catalog_docs(scope);
         CREATE INDEX IF NOT EXISTS idx_catalog_docs_missing ON catalog_docs(missing_refs);
         CREATE INDEX IF NOT EXISTS idx_catalog_docs_devices ON catalog_docs(has_devices);

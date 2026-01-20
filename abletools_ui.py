@@ -2702,6 +2702,80 @@ class SettingsPanel(tk.Frame):
         ).pack(anchor="w", padx=16, pady=(0, 16))
 
 
+class InsightsPanel(tk.Frame):
+    def __init__(self, master: tk.Misc, app: "AbletoolsUI") -> None:
+        super().__init__(master, bg=BG)
+        self.app = app
+        self._build()
+
+    def _build(self) -> None:
+        header = tk.Frame(self, bg=BG)
+        header.pack(fill="x", padx=16, pady=(16, 8))
+        tk.Label(header, text="Insights", font=TITLE_FONT, fg=TEXT, bg=BG).pack(
+            side="left"
+        )
+        ttk.Button(
+            header, text="Refresh", command=self.refresh, style="Accent.TButton"
+        ).pack(side="right")
+
+        grid = tk.Frame(self, bg=BG)
+        grid.pack(fill="both", expand=True, padx=16, pady=(0, 16))
+        for col in range(2):
+            grid.columnconfigure(col, weight=1)
+        for row in range(2):
+            grid.rowconfigure(row, weight=1)
+
+        self.health_text = self._make_box(grid, "Set Health (Worst)", 0, 0)
+        self.hotspots_text = self._make_box(grid, "Missing Ref Hotspots", 0, 1)
+        self.footprint_text = self._make_box(grid, "Audio Footprint", 1, 0)
+        self.chains_text = self._make_box(grid, "Top Device Chains", 1, 1)
+
+    def _make_box(self, master: tk.Frame, title: str, row: int, col: int) -> tk.Text:
+        box = tk.Frame(master, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
+        box.grid(row=row, column=col, sticky="nsew", padx=6, pady=6)
+        tk.Label(box, text=title, font=H2_FONT, fg=TEXT, bg=PANEL).pack(
+            anchor="w", padx=12, pady=(10, 4)
+        )
+        text = tk.Text(
+            box,
+            height=8,
+            bg=PANEL,
+            fg=MUTED,
+            insertbackground=TEXT,
+            relief="flat",
+            font=MONO_FONT,
+        )
+        text.pack(fill="both", expand=True, padx=12, pady=(0, 12))
+        text.configure(state="disabled")
+        return text
+
+    def refresh(self) -> None:
+        scope = self.app.current_scope or "live_recordings"
+        health = self.app.load_set_health(scope, limit=8)
+        hotspots = self.app.load_missing_hotspots(scope, limit=8)
+        footprint = self.app.load_audio_footprint(scope)
+        chains = self.app.load_chain_fingerprints(scope, limit=8)
+
+        self._fill_text(self.health_text, health or ["No data yet."])
+        self._fill_text(self.hotspots_text, hotspots or ["No data yet."])
+        if footprint:
+            lines = [
+                f"Total media: {format_bytes(footprint.get('total_media_bytes', 0))}",
+                f"Referenced: {format_bytes(footprint.get('referenced_media_bytes', 0))}",
+                f"Unreferenced: {format_bytes(footprint.get('unreferenced_media_bytes', 0))}",
+            ]
+        else:
+            lines = ["No data yet."]
+        self._fill_text(self.footprint_text, lines)
+        self._fill_text(self.chains_text, chains or ["No data yet."])
+
+    def _fill_text(self, widget: tk.Text, lines: list[str]) -> None:
+        widget.configure(state="normal")
+        widget.delete("1.0", "end")
+        widget.insert("end", "\n".join(lines))
+        widget.configure(state="disabled")
+
+
 class PreferencesPanel(tk.Frame):
     def __init__(self, master: tk.Misc, app: "AbletoolsUI") -> None:
         super().__init__(master, bg=BG)
@@ -3129,6 +3203,7 @@ class AbletoolsUI(tk.Tk):
         self._views["dashboard"] = DashboardPanel(content, self)
         self._views["scan"] = ScanView(content, self)
         self._views["catalog"] = CatalogPanel(content, self)
+        self._views["insights"] = InsightsPanel(content, self)
         self._views["tools"] = RamifyPanel(content)
         self._views["preferences"] = PreferencesPanel(content, self)
         self._views["settings"] = SettingsPanel(content, self)
@@ -3160,6 +3235,7 @@ class AbletoolsUI(tk.Tk):
             ("dashboard", "Dash"),
             ("scan", "Scan"),
             ("catalog", "Catalog"),
+            ("insights", "Insights"),
             ("tools", "Tools"),
             ("preferences", "Prefs"),
             ("settings", "Settings"),
@@ -3309,6 +3385,10 @@ class AbletoolsUI(tk.Tk):
                 except Exception as exc:
                     messagebox.showerror("Preferences", f"Failed to load: {exc}")
                     self._log_event("ERROR", f"preferences refresh: {exc}")
+        elif name == "insights":
+            insights = self._views.get("insights")
+            if isinstance(insights, InsightsPanel):
+                insights.refresh()
 
     def refresh_dashboard(self) -> None:
         dashboard = self._views.get("dashboard")
@@ -3489,6 +3569,79 @@ class AbletoolsUI(tk.Tk):
             return [f"{path} ({count})" for path, count in rows]
         except Exception:
             return []
+
+    def load_missing_hotspots(self, scope: str, limit: int = 8) -> list[str]:
+        db_path = self.resolve_catalog_db_path()
+        if not db_path or not db_path.exists():
+            return []
+        try:
+            with sqlite3.connect(db_path) as conn:
+                rows = conn.execute(
+                    "SELECT ref_parent, missing_count FROM missing_refs_by_path "
+                    "WHERE scope = ? ORDER BY missing_count DESC LIMIT ?",
+                    (scope, limit),
+                ).fetchall()
+            return [f"{path} ({count})" for path, count in rows]
+        except Exception:
+            return []
+
+    def load_chain_fingerprints(self, scope: str, limit: int = 8) -> list[str]:
+        db_path = self.resolve_catalog_db_path()
+        if not db_path or not db_path.exists():
+            return []
+        try:
+            with sqlite3.connect(db_path) as conn:
+                rows = conn.execute(
+                    "SELECT chain, usage_count FROM device_chain_stats "
+                    "WHERE scope = ? ORDER BY usage_count DESC LIMIT ?",
+                    (scope, limit),
+                ).fetchall()
+            return [f"{chain} ({count})" for chain, count in rows]
+        except Exception:
+            return []
+
+    def load_set_health(self, scope: str, limit: int = 8) -> list[str]:
+        db_path = self.resolve_catalog_db_path()
+        if not db_path or not db_path.exists():
+            return []
+        try:
+            with sqlite3.connect(db_path) as conn:
+                rows = conn.execute(
+                    "SELECT path, health_score, missing_refs_count, devices_count, samples_count "
+                    "FROM set_health WHERE scope = ? "
+                    "ORDER BY health_score ASC LIMIT ?",
+                    (scope, limit),
+                ).fetchall()
+            results = []
+            for path, score, missing, devices, samples in rows:
+                name = Path(path).stem
+                results.append(
+                    f"{score:.0f} | {name} (missing {missing}, devices {devices}, samples {samples})"
+                )
+            return results
+        except Exception:
+            return []
+
+    def load_audio_footprint(self, scope: str) -> dict[str, int]:
+        db_path = self.resolve_catalog_db_path()
+        if not db_path or not db_path.exists():
+            return {}
+        try:
+            with sqlite3.connect(db_path) as conn:
+                row = conn.execute(
+                    "SELECT total_media_bytes, referenced_media_bytes, unreferenced_media_bytes "
+                    "FROM audio_footprint WHERE scope = ?",
+                    (scope,),
+                ).fetchone()
+            if not row:
+                return {}
+            return {
+                "total_media_bytes": int(row[0]),
+                "referenced_media_bytes": int(row[1]),
+                "unreferenced_media_bytes": int(row[2]),
+            }
+        except Exception:
+            return {}
 
     def load_dashboard_focus(self, scope: str) -> dict[str, int]:
         db_path = self.resolve_catalog_db_path()

@@ -19,6 +19,13 @@
   - Has samples
   - Missing refs
 
+## Insights
+- Panels:
+  - Set health (worst offenders).
+  - Missing reference hotspots by folder.
+  - Audio footprint (total/referenced/unreferenced).
+  - Top device chains.
+
 ## Prefs
 - Sources table: kind, source path, last modified.
 - Summary panel:
@@ -33,4 +40,3 @@
 - Catalog location
 - Scan defaults
 - Appearance and animation toggles
-

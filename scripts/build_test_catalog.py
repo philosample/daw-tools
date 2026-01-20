@@ -12,7 +12,8 @@ ROOT = Path(__file__).resolve().parents[1]
 DOC_CATALOG = ROOT / "docs" / "TEST_CATALOG.md"
 DEFAULT_MAP = ROOT / "tests" / "coverage_map.yaml"
 
-SQL_RE = re.compile(r"\\b(SELECT|INSERT|UPDATE|DELETE)\\b", re.IGNORECASE)
+SQL_RE = re.compile(r"\b(SELECT|INSERT|UPDATE|DELETE|WITH)\b", re.IGNORECASE)
+SQL_STRIP_RE = re.compile(r"\s+")
 
 
 @dataclass
@@ -54,6 +55,40 @@ def default_tests_for_file(path: str) -> list[str]:
     if path.endswith("abletools_maintenance.py"):
         return ["python3 abletools_maintenance.py --help"]
     return []
+
+
+def _is_sql_snippet(value: str) -> bool:
+    upper = value.upper()
+    if "SELECT" in upper and "FROM" in upper:
+        return True
+    if "INSERT" in upper and "INTO" in upper:
+        return True
+    if "UPDATE" in upper and "SET" in upper:
+        return True
+    if "DELETE" in upper and "FROM" in upper:
+        return True
+    if upper.lstrip().startswith("WITH ") and "SELECT" in upper:
+        return True
+    return False
+
+
+def _extract_string(node: ast.AST) -> str | None:
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.JoinedStr):
+        parts = []
+        for part in node.values:
+            if isinstance(part, ast.Constant) and isinstance(part.value, str):
+                parts.append(part.value)
+            else:
+                parts.append("{}")
+        return "".join(parts)
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        left = _extract_string(node.left)
+        right = _extract_string(node.right)
+        if left is not None and right is not None:
+            return left + right
+    return None
 
 
 def collect_items(paths: Iterable[Path]) -> list[Item]:
@@ -104,19 +139,33 @@ def collect_items(paths: Iterable[Path]) -> list[Item]:
                         tests=tests,
                     )
                 )
-
-        for idx, line in enumerate(text.splitlines(), start=1):
-            if "SELECT" in line.upper() and SQL_RE.search(line):
-                items.append(
-                    Item(
-                        kind="query",
-                        name=line.strip()[:80],
-                        file=rel,
-                        line=idx,
-                        note="sql",
-                        tests=tests,
+            elif isinstance(node, ast.Call):
+                func_name = None
+                if isinstance(node.func, ast.Attribute):
+                    func_name = node.func.attr
+                elif isinstance(node.func, ast.Name):
+                    func_name = node.func.id
+                if func_name not in {"execute", "executemany", "executescript"}:
+                    continue
+                if not node.args:
+                    continue
+                value = _extract_string(node.args[0])
+                if not value:
+                    continue
+                value = value.strip()
+                if SQL_RE.search(value) and _is_sql_snippet(value):
+                    line = getattr(node, "lineno", 1)
+                    cleaned = SQL_STRIP_RE.sub(" ", value)
+                    items.append(
+                        Item(
+                            kind="query",
+                            name=cleaned[:80],
+                            file=rel,
+                            line=line,
+                            note="sql",
+                            tests=tests,
+                        )
                     )
-                )
 
     return items
 
@@ -165,6 +214,7 @@ def main() -> int:
         default=[
             "abletools_scan.py",
             "abletools_catalog_db.py",
+            "abletools_catalog_ops.py",
             "abletools_prefs.py",
             "abletools_ui.py",
             "abletools_schema_validate.py",

@@ -15,6 +15,9 @@
   - caching behavior for `prefs_cache.json`.
 - `abletools_catalog_ops.py`
   - cleanup + backup operations with temp fixtures.
+- `abletools_analytics.py`
+  - set health + audio footprint metrics.
+  - missing ref hotspots and device chain fingerprints.
 - `abletools_scan.py`
   - incremental decision logic (mtime/size/ctime/hash).
   - scope handling and output file naming.

@@ -16,10 +16,11 @@
 - Backup tab to snapshot `.als` files, JSONL, schemas, and DB.
 
 ## Phase 3: Analytics
-- Usage stats dashboards.
-- Duplicate detection and missing reference auditor.
+- Usage stats dashboards. (in progress: Insights tab)
+- Duplicate detection and missing reference auditor. (in progress: hotspots + health scoring)
 - Smart labels (color tagging) for high-use devices.
 - Track/clip/device analytics from structured XML tables.
+- Storage footprint breakdown (sets vs. audio) and recency trends.
 
 ## Phase 4: Tooling
 - Batch relabeling in Ableton browser (if automatable).

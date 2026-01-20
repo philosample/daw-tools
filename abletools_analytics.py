@@ -170,6 +170,73 @@ def compute_missing_refs_by_path(conn: sqlite3.Connection, scope: str) -> None:
         )
 
 
+def compute_set_health(conn: sqlite3.Connection, scope: str) -> None:
+    now_ts = int(time.time())
+    conn.execute("DELETE FROM set_health WHERE scope = ?", (scope,))
+    rows = conn.execute(
+        """
+        SELECT path, tracks_total, clips_total, devices_count, samples_count, missing_refs_count
+        FROM doc_complexity
+        WHERE scope = ?
+        """,
+        (scope,),
+    ).fetchall()
+    for path, tracks, clips, devices, samples, missing in rows:
+        devices = int(devices or 0)
+        samples = int(samples or 0)
+        missing = int(missing or 0)
+        score = 100.0 - (missing * 10.0) - (devices * 1.0) - (samples * 0.2)
+        if score < 0:
+            score = 0.0
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO set_health
+                (scope, path, tracks_total, clips_total, devices_count,
+                 samples_count, missing_refs_count, health_score, computed_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                scope,
+                path,
+                int(tracks or 0),
+                int(clips or 0),
+                devices,
+                samples,
+                missing,
+                float(score),
+                now_ts,
+            ),
+        )
+
+
+def compute_audio_footprint(conn: sqlite3.Connection, scope: str) -> None:
+    suffix = scope_suffix(scope)
+    now_ts = int(time.time())
+    total_media = conn.execute(
+        f"SELECT COALESCE(SUM(size), 0) FROM file_index{suffix} WHERE kind = 'media'"
+    ).fetchone()[0]
+    referenced_media = conn.execute(
+        f"""
+        SELECT COALESCE(SUM(fi.size), 0)
+        FROM file_index{suffix} fi
+        WHERE fi.path IN (
+            SELECT DISTINCT sample_path FROM doc_sample_refs{suffix}
+        )
+        """
+    ).fetchone()[0]
+    total_media = int(total_media or 0)
+    referenced_media = int(referenced_media or 0)
+    unreferenced = max(0, total_media - referenced_media)
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO audio_footprint
+            (scope, total_media_bytes, referenced_media_bytes, unreferenced_media_bytes, computed_at)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (scope, total_media, referenced_media, unreferenced, now_ts),
+    )
+
+
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description="Compute Abletools analytics and store in DB.")
     ap.add_argument("db", help="Path to abletools_catalog.sqlite")
@@ -188,6 +255,8 @@ def main(argv: list[str]) -> int:
             compute_doc_complexity(conn, scope)
             compute_library_growth(conn, scope)
             compute_missing_refs_by_path(conn, scope)
+            compute_set_health(conn, scope)
+            compute_audio_footprint(conn, scope)
 
     return 0
 
