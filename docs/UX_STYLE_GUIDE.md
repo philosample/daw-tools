@@ -69,6 +69,7 @@ Formal name: **Design System** (also called a **UI Style Guide** or **Component 
 - **Primary actions**: right-aligned on headers or left-aligned in panels
 - **Secondary actions**: grouped adjacent to primary
 - **Background activity**: status label + animated overlay (Scan)
+- **Advanced options**: hide behind a single toggle; keep the default view compact.
 
 ## Catalog tab tenets
 - **Single control row**: filters, scope, search, and actions share one vertical center line.

@@ -22,6 +22,7 @@ Abletools is a local toolkit for indexing, searching, and analyzing Ableton Live
 python abletools_ui.py
 python abletools_qt.py
 ```
+PyQt (`abletools_qt.py`) is the default UI. The Tk UI (`abletools_ui.py`) is legacy and will be removed.
 
 If you prefer CLI-only:
 ```bash

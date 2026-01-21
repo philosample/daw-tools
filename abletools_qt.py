@@ -150,6 +150,29 @@ class CommandWorker(QThread):
         self.finished.emit(proc.returncode)
 
 
+class AuditWorker(QThread):
+    output = pyqtSignal(str)
+    finished = pyqtSignal(int)
+
+    def __init__(self, catalog: CatalogService) -> None:
+        super().__init__()
+        self._catalog = catalog
+
+    def run(self) -> None:
+        try:
+            issues = self._catalog.audit_zero_tracks()
+        except Exception as exc:
+            self.output.emit(f"ERROR: {exc}")
+            self.finished.emit(1)
+            return
+        if not issues:
+            self.output.emit("No zero-track sets found.")
+        else:
+            for entry in issues:
+                self.output.emit(entry)
+        self.finished.emit(0)
+
+
 class RamifyWorker(QThread):
     output = pyqtSignal(str)
     finished = pyqtSignal()
@@ -281,7 +304,7 @@ class DashboardView(QWidget):
         super().__init__()
         self.catalog = catalog
         layout = QVBoxLayout(self)
-        layout.setSpacing(10)
+        layout.setSpacing(12)
         layout.setContentsMargins(0, 0, 0, 0)
 
         header = QHBoxLayout()
@@ -301,6 +324,8 @@ class DashboardView(QWidget):
         layout.addLayout(header)
 
         cards = QGridLayout()
+        cards.setHorizontalSpacing(12)
+        cards.setVerticalSpacing(12)
         self.card_sets_value, self.card_sets_sub = self._stat_card(cards, "Total Sets", 0)
         self.card_set_size_value, _ = self._stat_card(cards, "Set Size", 1)
         self.card_audio_size_value, _ = self._stat_card(cards, "Audio Size", 2)
@@ -331,6 +356,8 @@ class DashboardView(QWidget):
         layout.addWidget(backup_box)
 
         lists_layout = QGridLayout()
+        lists_layout.setHorizontalSpacing(12)
+        lists_layout.setVerticalSpacing(12)
         self.top_devices = QPlainTextEdit()
         self.top_plugins = QPlainTextEdit()
         self.top_chains = QPlainTextEdit()
@@ -503,6 +530,7 @@ class InsightsView(QWidget):
         super().__init__()
         self.catalog = catalog
         layout = QVBoxLayout(self)
+        layout.setSpacing(12)
 
         header = QHBoxLayout()
         title = QLabel("Insights")
@@ -598,6 +626,7 @@ class ScanView(QWidget):
         self._log_file: Optional[Path] = None
 
         layout = QVBoxLayout(self)
+        layout.setSpacing(12)
 
         header = QHBoxLayout()
         title = QLabel("Scan")
@@ -607,6 +636,7 @@ class ScanView(QWidget):
         layout.addLayout(header)
 
         root_row = QHBoxLayout()
+        root_row.setSpacing(8)
         root_row.addWidget(QLabel("Root folder:"))
         self.root_edit = QLineEdit(str(self._default_root()))
         root_row.addWidget(self.root_edit)
@@ -616,6 +646,7 @@ class ScanView(QWidget):
         layout.addLayout(root_row)
 
         scope_row = QHBoxLayout()
+        scope_row.setSpacing(8)
         scope_row.addWidget(QLabel("Scope:"))
         self.scope_combo = QComboBox()
         self.scope_combo.addItems(["live_recordings", "user_library", "preferences", "all"])
@@ -625,6 +656,8 @@ class ScanView(QWidget):
 
         full_group = QGroupBox("Full Scan")
         full_layout = QGridLayout(full_group)
+        full_layout.setHorizontalSpacing(12)
+        full_layout.setVerticalSpacing(8)
         self.incremental_cb = QCheckBox("Incremental (skip unchanged)")
         self.include_media_cb = QCheckBox("Include media files")
         self.hash_cb = QCheckBox("Compute hashes")
@@ -633,29 +666,43 @@ class ScanView(QWidget):
         self.changed_only_cb = QCheckBox("Changed-only scan")
         self.checkpoint_cb = QCheckBox("Write checkpoints")
         self.resume_cb = QCheckBox("Resume checkpoint")
+        self.rehash_cb = QCheckBox("Rehash unchanged")
+        self.hash_docs_cb = QCheckBox("Hash Ableton sets only")
+        self.full_advanced_toggle = QCheckBox("Advanced options")
+        self.full_advanced_toggle.setChecked(False)
         for cb in [
             self.incremental_cb,
             self.include_media_cb,
             self.hash_cb,
             self.analyze_audio_cb,
-            self.include_backups_cb,
-            self.changed_only_cb,
-            self.checkpoint_cb,
-            self.resume_cb,
         ]:
             cb.setChecked(cb in [self.incremental_cb, self.checkpoint_cb])
         full_layout.addWidget(self.incremental_cb, 0, 0)
         full_layout.addWidget(self.include_media_cb, 0, 1)
         full_layout.addWidget(self.hash_cb, 0, 2)
         full_layout.addWidget(self.analyze_audio_cb, 0, 3)
-        full_layout.addWidget(self.include_backups_cb, 1, 0)
-        full_layout.addWidget(self.changed_only_cb, 1, 1)
-        full_layout.addWidget(self.checkpoint_cb, 1, 2)
-        full_layout.addWidget(self.resume_cb, 1, 3)
+        full_layout.addWidget(self.full_advanced_toggle, 1, 0, 1, 2)
+
+        self.full_advanced_box = QWidget()
+        full_adv_layout = QGridLayout(self.full_advanced_box)
+        full_adv_layout.setContentsMargins(0, 0, 0, 0)
+        full_adv_layout.setHorizontalSpacing(12)
+        full_adv_layout.setVerticalSpacing(8)
+        full_adv_layout.addWidget(self.include_backups_cb, 0, 0)
+        full_adv_layout.addWidget(self.changed_only_cb, 0, 1)
+        full_adv_layout.addWidget(self.checkpoint_cb, 0, 2)
+        full_adv_layout.addWidget(self.resume_cb, 0, 3)
+        full_adv_layout.addWidget(self.rehash_cb, 1, 0)
+        full_adv_layout.addWidget(self.hash_docs_cb, 1, 1)
+        self.full_advanced_box.setVisible(False)
+        self.full_advanced_toggle.toggled.connect(self.full_advanced_box.setVisible)
+        full_layout.addWidget(self.full_advanced_box, 2, 0, 1, 4)
         layout.addWidget(full_group)
 
         targeted_group = QGroupBox("Targeted Scan")
         targeted_layout = QGridLayout(targeted_group)
+        targeted_layout.setHorizontalSpacing(12)
+        targeted_layout.setVerticalSpacing(8)
         select_btn = QPushButton("Select Sets")
         select_btn.setObjectName("Primary")
         select_btn.clicked.connect(self._select_sets)
@@ -678,8 +725,19 @@ class ScanView(QWidget):
 
         self.deep_snapshot_cb = QCheckBox("Deep XML snapshot")
         self.xml_nodes_cb = QCheckBox("XML nodes (huge)")
-        targeted_layout.addWidget(self.deep_snapshot_cb, 2, 0)
-        targeted_layout.addWidget(self.xml_nodes_cb, 2, 1)
+        self.targeted_advanced_toggle = QCheckBox("Advanced options")
+        self.targeted_advanced_toggle.setChecked(False)
+        targeted_layout.addWidget(self.targeted_advanced_toggle, 2, 0, 1, 2)
+        self.targeted_advanced_box = QWidget()
+        targeted_adv_layout = QGridLayout(self.targeted_advanced_box)
+        targeted_adv_layout.setContentsMargins(0, 0, 0, 0)
+        targeted_adv_layout.setHorizontalSpacing(12)
+        targeted_adv_layout.setVerticalSpacing(8)
+        targeted_adv_layout.addWidget(self.deep_snapshot_cb, 0, 0)
+        targeted_adv_layout.addWidget(self.xml_nodes_cb, 0, 1)
+        self.targeted_advanced_box.setVisible(False)
+        self.targeted_advanced_toggle.toggled.connect(self.targeted_advanced_box.setVisible)
+        targeted_layout.addWidget(self.targeted_advanced_box, 3, 0, 1, 4)
         layout.addWidget(targeted_group)
 
         btn_row = QHBoxLayout()
@@ -793,6 +851,10 @@ class ScanView(QWidget):
                 cmd.append("--analyze-audio")
             if self.hash_cb.isChecked():
                 cmd.append("--hash")
+            if self.rehash_cb.isChecked():
+                cmd.append("--rehash-all")
+            if self.hash_docs_cb.isChecked():
+                cmd.append("--hash-docs-only")
             if self.changed_only_cb.isChecked():
                 cmd.append("--changed-only")
             if self.checkpoint_cb.isChecked():
@@ -1262,6 +1324,7 @@ class PreferencesView(QWidget):
         self.show_raw = False
         self.sources: list[tuple[str, str, int]] = []
         layout = QVBoxLayout(self)
+        layout.setSpacing(12)
 
         header = QHBoxLayout()
         title = QLabel("Preferences")
@@ -1379,6 +1442,7 @@ class ToolsView(QWidget):
         super().__init__()
         self._worker: Optional[RamifyWorker] = None
         layout = QVBoxLayout(self)
+        layout.setSpacing(12)
 
         header = QHBoxLayout()
         title = QLabel("Tools")
@@ -1492,10 +1556,12 @@ class ToolsView(QWidget):
 
 
 class SettingsView(QWidget):
-    def __init__(self) -> None:
+    def __init__(self, catalog: CatalogService) -> None:
         super().__init__()
+        self.catalog = catalog
         self._worker: Optional[CommandWorker] = None
         layout = QVBoxLayout(self)
+        layout.setSpacing(12)
 
         header = QHBoxLayout()
         title = QLabel("Settings")
@@ -1506,6 +1572,7 @@ class SettingsView(QWidget):
 
         group = QGroupBox("Maintenance")
         group_layout = QHBoxLayout(group)
+        group_layout.setSpacing(12)
         self.analytics_btn = QPushButton("Run Analytics")
         self.analytics_btn.setObjectName("Primary")
         self.analytics_btn.clicked.connect(self._run_analytics)
@@ -1513,6 +1580,9 @@ class SettingsView(QWidget):
         self.audit_btn = QPushButton("Audit Missing")
         self.audit_btn.clicked.connect(self._audit_missing)
         group_layout.addWidget(self.audit_btn)
+        self.audit_zero_btn = QPushButton("Audit Zero Tracks")
+        self.audit_zero_btn.clicked.connect(self._audit_zero_tracks)
+        group_layout.addWidget(self.audit_zero_btn)
         self.optimize_btn = QPushButton("Optimize DB")
         self.optimize_btn.clicked.connect(self._optimize_db)
         group_layout.addWidget(self.optimize_btn)
@@ -1540,6 +1610,19 @@ class SettingsView(QWidget):
             QMessageBox.information(self, "Audit", "No database found yet.")
             return
         self._start_command([sys.executable, str(script), str(db_path), "--audit-missing"])
+
+    def _audit_zero_tracks(self) -> None:
+        db_path = self.catalog.catalog_dir / "abletools_catalog.sqlite"
+        if not db_path.exists():
+            QMessageBox.information(self, "Audit", "No database found yet.")
+            return
+        self.output.clear()
+        worker = AuditWorker(self.catalog)
+        worker.output.connect(self._append_output)
+        worker.finished.connect(self._finish_command)
+        self._worker = worker
+        self._toggle_buttons(False)
+        worker.start()
 
     def _optimize_db(self) -> None:
         db_path = ABLETOOLS_DIR / ".abletools_catalog" / "abletools_catalog.sqlite"
@@ -1571,6 +1654,7 @@ class SettingsView(QWidget):
     def _toggle_buttons(self, enabled: bool) -> None:
         self.analytics_btn.setEnabled(enabled)
         self.audit_btn.setEnabled(enabled)
+        self.audit_zero_btn.setEnabled(enabled)
         self.optimize_btn.setEnabled(enabled)
 
 
@@ -1626,7 +1710,7 @@ class MainWindow(QMainWindow):
         tabs.addTab(InsightsView(catalog), "Insights")
         tabs.addTab(ToolsView(), "Tools")
         tabs.addTab(PreferencesView(catalog), "Preferences")
-        tabs.addTab(SettingsView(), "Settings")
+        tabs.addTab(SettingsView(catalog), "Settings")
         root_layout.addWidget(tabs)
 
         overlay = GridOverlay(root)
