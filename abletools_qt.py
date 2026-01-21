@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Optional
 
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
-from PyQt6.QtGui import QMovie, QFont
+from PyQt6.QtGui import QMovie, QFont, QFontMetrics
 from PyQt6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -58,6 +58,17 @@ def is_backup_path(path: str) -> bool:
     if any(part.lower() == "backup" for part in p.parts):
         return True
     return bool(_TIMESTAMP_BRACKET_RE.search(p.name))
+
+
+def _set_combo_width(combo: QComboBox, padding: int = 28, minimum: int | None = None) -> None:
+    metrics = QFontMetrics(combo.font())
+    widest = 0
+    for idx in range(combo.count()):
+        widest = max(widest, metrics.horizontalAdvance(combo.itemText(idx)))
+    width = widest + padding
+    if minimum is not None:
+        width = max(width, minimum)
+    combo.setFixedWidth(width)
 
 
 class ScanWorker(QThread):
@@ -280,6 +291,7 @@ class DashboardView(QWidget):
         self.scope_combo = QComboBox()
         self.scope_combo.addItems(["live_recordings", "user_library"])
         self.scope_combo.currentTextChanged.connect(self.refresh)
+        _set_combo_width(self.scope_combo, padding=26)
         header.addWidget(self.scope_combo)
         header.addStretch(1)
         refresh_btn = QPushButton("Refresh")
@@ -949,6 +961,7 @@ class CatalogView(QWidget):
         self.scope_combo.setObjectName("CatalogScope")
         self.scope_combo.addItems(["live_recordings", "user_library", "preferences", "all"])
         self.scope_combo.currentTextChanged.connect(self.refresh)
+        _set_combo_width(self.scope_combo, padding=26)
 
         self.search_edit = QLineEdit()
         self.search_edit.setObjectName("CatalogSearch")
@@ -1054,8 +1067,7 @@ class CatalogView(QWidget):
         content_row.addWidget(detail_box, 2)
         layout.addLayout(content_row)
 
-        self.scope_combo.setFixedWidth(180)
-        self.search_edit.setMinimumWidth(260)
+        self.search_edit.setFixedWidth(240)
         self.search_edit.setFixedHeight(22)
         self.scope_combo.setFixedHeight(22)
         search_btn.setFixedHeight(24)

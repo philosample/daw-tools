@@ -19,6 +19,9 @@ Formal name: **Design System** (also called a **UI Style Guide** or **Component 
 - **Card radius:** 8px
 - **Field padding:** 6–8px
 - **Tab padding:** 12px 20px, min-height 36px
+- **Panel gaps:** 12px minimum between bordered panels; never less than 10px.
+- **Grid gutters:** 12px between card rows/columns for dashboards and summary grids.
+- **Border spacing:** default 12px between adjacent bordered elements (cards, panels, subpanels).
 
 ## Components (templates)
 
@@ -41,6 +44,8 @@ Formal name: **Design System** (also called a **UI Style Guide** or **Component 
 - Dark fill, 2px border
 - Focus border becomes neon accent
 - Minimum height 28px (catalog scope/search uses thinner 22px height)
+- **Scope dropdown width:** fit to longest item + ~26px padding (match dashboard dropdown).
+- **Search width:** slightly wider than scope; default 240px in catalog.
 
 ### Cards / Panels (GroupBox)
 - 2px border, subtle background
@@ -70,6 +75,11 @@ Formal name: **Design System** (also called a **UI Style Guide** or **Component 
 - **Filters**: keep label and checkbox spacing tight; label sits close to first checkbox.
 - **Control sizing**: scope/search fields stay compact to visually balance the row.
 - **Details actions**: bottom action buttons centered as a group for quick access.
+- **Card spacing**: keep stat cards and subpanels at least 12px apart; no border overlap.
+
+## Design system rules of use
+- New UI elements must follow these tokens and spacing rules by default.
+- If a new pattern is required, update this guide alongside the code change.
 
 ## Iconography
 - **Logo:** `resources/abletools_mark.svg`

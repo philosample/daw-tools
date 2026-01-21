@@ -20,6 +20,7 @@ Abletools is a local toolkit for indexing, searching, and analyzing Ableton Live
 ## Quick Start
 ```bash
 python abletools_ui.py
+python abletools_qt.py
 ```
 
 If you prefer CLI-only:
@@ -121,7 +122,8 @@ python abletools_schema_validate.py ./.abletools_catalog --incremental
 
 ## Project Layout
 ```
-abletools_ui.py            # UI entry point
+abletools_ui.py            # UI entry point (Tk)
+abletools_qt.py            # UI entry point (PyQt)
 abletools_scan.py          # Scanning and JSONL catalog writer
 abletools_catalog_db.py    # SQLite schema + migration
 abletools_prefs.py         # Preferences discovery + parsing
