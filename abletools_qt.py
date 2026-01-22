@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import random
+from string import Template
 import re
 import subprocess
 import sys
@@ -42,7 +43,8 @@ from PyQt6.QtWidgets import (
     QFrame,
 )
 
-from abletools_catalog_ops import backup_files, cleanup_catalog_dir
+from abletools_catalog_ops import backup_files
+from abletools_actions import open_in_finder, run_catalog_cleanup, run_targeted_scan
 from abletools_core import CatalogService, format_bytes, format_mtime, safe_read_json
 from ramify_core import iter_targets, process_file
 
@@ -87,6 +89,9 @@ FILTER_LABEL_GAP = 4
 HEADER_LOGO_SIZE = 44
 FIELD_LABEL_HEIGHT = 22
 DETAIL_LABEL_WIDTH = 96
+CONTROL_ROW_HEIGHT = FIELD_LABEL_HEIGHT
+BUTTON_HEIGHT = 32
+BUTTON_PADDING_Y = 3
 
 
 def _vbox(parent: QWidget | None = None, spacing: int = SPACE_PANEL) -> QVBoxLayout:
@@ -152,7 +157,7 @@ def _value_label(text: str = "-", name: str | None = "ValueReadout") -> QLabel:
 def _button(text: str, primary: bool = False, name: str | None = None) -> QPushButton:
     btn = QPushButton(text)
     btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-    btn.setFixedHeight(32)
+    btn.setFixedHeight(BUTTON_HEIGHT)
     if primary:
         btn.setObjectName("Primary")
     elif name:
@@ -211,6 +216,20 @@ def _group_box(
         layout = _vbox(group, spacing)
     layout.setContentsMargins(GROUP_MARGIN, GROUP_MARGIN, GROUP_MARGIN, GROUP_MARGIN)
     return group, layout
+
+
+def _boxed_row(
+    *widgets: QWidget,
+    align: str = "left",
+    top: int = SPACE_PANEL,
+    bottom: int = SPACE_PANEL,
+) -> QWidget:
+    container = QWidget()
+    layout = _vbox(container)
+    layout.addSpacing(top)
+    layout.addWidget(_action_row(*widgets, align=align))
+    layout.addSpacing(bottom)
+    return container
 
 
 def _plain_text(font: QFont | None = None) -> QPlainTextEdit:
@@ -274,7 +293,7 @@ def _action_status_row(
     return row
 
 
-def _controls_bar(*items: QWidget) -> QWidget:
+def _controls_bar(*items: QWidget, stretch: bool = False) -> QWidget:
     bar = QWidget()
     layout = _hbox(bar)
     layout.setContentsMargins(0, CONTROL_ROW_MARGIN, 0, CONTROL_ROW_MARGIN)
@@ -282,7 +301,15 @@ def _controls_bar(*items: QWidget) -> QWidget:
     layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
     for item in items:
         layout.addWidget(item, 0, Qt.AlignmentFlag.AlignVCenter)
+    if stretch:
+        layout.addStretch(1)
     return bar
+
+
+def _hgap(width: int) -> QWidget:
+    spacer = QWidget()
+    spacer.setFixedWidth(width)
+    return spacer
 
 
 def _table(
@@ -602,11 +629,9 @@ class DashboardView(QWidget):
         backup_audio.clicked.connect(self._backup_audio)
         cleanup_btn = _button("Clean Catalog")
         cleanup_btn.clicked.connect(self._cleanup_catalog)
-        backup_layout.addStretch(1)
         backup_layout.addWidget(
-            _action_row(backup_sets, backup_audio, cleanup_btn, align="left")
+            _boxed_row(backup_sets, backup_audio, cleanup_btn, align="left")
         )
-        backup_layout.addStretch(1)
         layout.addWidget(backup_box)
         _section_gap(layout)
 
@@ -736,30 +761,16 @@ class DashboardView(QWidget):
 
         def _run() -> None:
             selected = {k: v.isChecked() for k, v in options.items()}
-            removed, bytes_freed = cleanup_catalog_dir(self.catalog.catalog_dir, selected)
-            maintenance_msg = ""
-            if rebuild_cb.isChecked():
-                script = ABLETOOLS_DIR / "abletools_catalog_db.py"
-                proc = subprocess.run(
-                    [sys.executable, str(script), str(self.catalog.catalog_dir), "--overwrite", "--vacuum"],
-                    cwd=str(ABLETOOLS_DIR),
-                    capture_output=True,
-                    text=True,
-                )
-                maintenance_msg = " Rebuilt DB." if proc.returncode == 0 else f" Rebuild failed: {proc.stderr.strip()}"
-            elif optimize_cb.isChecked():
-                script = ABLETOOLS_DIR / "abletools_maintenance.py"
-                proc = subprocess.run(
-                    [sys.executable, str(script), str(self.catalog.catalog_dir / "abletools_catalog.sqlite"), "--analyze", "--optimize", "--vacuum"],
-                    cwd=str(ABLETOOLS_DIR),
-                    capture_output=True,
-                    text=True,
-                )
-                maintenance_msg = " Optimized DB." if proc.returncode == 0 else f" Optimize failed: {proc.stderr.strip()}"
+            _, _, summary = run_catalog_cleanup(
+                self.catalog.catalog_dir,
+                selected,
+                rebuild_cb.isChecked(),
+                optimize_cb.isChecked(),
+            )
             QMessageBox.information(
                 self,
                 "Clean Catalog",
-                f"Removed {removed} files, freed {format_bytes(bytes_freed)}.{maintenance_msg}",
+                summary,
             )
             dialog.accept()
             self.refresh()
@@ -1282,7 +1293,7 @@ class CatalogView(QWidget):
         label = _label(text)
         label.setObjectName("FieldLabel")
         label.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-        label.setFixedHeight(36)
+        label.setFixedHeight(CONTROL_ROW_HEIGHT)
         if buddy is not None:
             label.setBuddy(buddy)
         return label
@@ -1291,9 +1302,8 @@ class CatalogView(QWidget):
         filters_label = _label("Filters", "FilterLabel")
         filters_label.setObjectName("FilterLabel")
         filters_label.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-        filters_label.setFixedHeight(36)
-        filter_gap = QWidget()
-        filter_gap.setFixedWidth(FILTER_LABEL_GAP)
+        filters_label.setFixedHeight(CONTROL_ROW_HEIGHT)
+        filter_gap = _hgap(FILTER_LABEL_GAP)
         self.missing_cb = _checkbox("Missing refs", name="CatalogFilterMissing")
         self.devices_cb = _checkbox("Has devices", name="CatalogFilterDevices")
         self.samples_cb = _checkbox("Has samples", name="CatalogFilterSamples")
@@ -1301,7 +1311,7 @@ class CatalogView(QWidget):
         for cb in [self.missing_cb, self.devices_cb, self.samples_cb, self.backups_cb]:
             cb.stateChanged.connect(self.refresh)
             cb.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-            cb.setFixedHeight(36)
+            cb.setFixedHeight(CONTROL_ROW_HEIGHT)
         filters_row = _checkbox_row(
             self.missing_cb, self.devices_cb, self.samples_cb, self.backups_cb
         )
@@ -1330,15 +1340,15 @@ class CatalogView(QWidget):
             filters_label,
             filter_gap,
             filters_row,
-            QWidget(),
+            _hgap(SPACE_ROW),
             scope_label,
             self.scope_combo,
             search_label,
             self.search_edit,
             self.search_btn,
             self.reset_btn,
+            stretch=True,
         )
-        controls_bar.layout().addStretch(1)
         layout.addWidget(controls_bar)
 
     def _build_content(self, layout: QVBoxLayout) -> None:
@@ -1549,7 +1559,7 @@ class CatalogView(QWidget):
         path = row.get("path_full")
         if not path:
             return
-        subprocess.run(["open", path])
+        open_in_finder(path)
 
     def _copy_path(self) -> None:
         selected = self.table.selectionModel().selectedRows()
@@ -1572,24 +1582,7 @@ class CatalogView(QWidget):
         if not path:
             QMessageBox.information(self, "Targeted Scan", "No path available for selection.")
             return
-        scan_script = ABLETOOLS_DIR / "abletools_scan.py"
-        cmd = [
-            sys.executable,
-            str(scan_script),
-            str(path),
-            "--scope",
-            scope,
-            "--mode",
-            "targeted",
-            "--details",
-            "struct,clips,devices,routing,refs",
-            "--out",
-            str(self.catalog.catalog_dir),
-            "--incremental",
-            "--progress",
-            "--verbose",
-        ]
-        proc = subprocess.run(cmd, cwd=str(ABLETOOLS_DIR), capture_output=True, text=True)
+        proc = run_targeted_scan(path, scope, self.catalog.catalog_dir)
         if proc.returncode != 0:
             QMessageBox.warning(self, "Targeted Scan", proc.stderr.strip() or "Scan failed.")
             return
@@ -1624,6 +1617,9 @@ class PreferencesView(QWidget):
 
         content_row = _hbox()
         sources_box, sources_layout = _group_box("Sources")
+        sources_layout.addWidget(
+            _label("Select a source to view the parsed summary and preview.", "HintText")
+        )
         self.source_list = _list()
         self.source_list.setMinimumWidth(300)
         self.source_list.currentRowChanged.connect(self._on_select)
@@ -2114,237 +2110,29 @@ def apply_theme(app: QApplication) -> None:
     if icon_path.exists():
         app.setWindowIcon(QIcon(str(icon_path)))
 
-    app.setStyleSheet(
-        """
-        QWidget {
-            color: #e6f1ff;
-        }
-        #AppRoot {
-            background: qlineargradient(
-                x1:0, y1:0, x2:1, y2:1,
-                stop:0 #04060a,
-                stop:0.5 #070b12,
-                stop:1 #0b1320
-            );
-        }
-        #HeaderBar {
-            border-bottom: 2px solid #3a6f98;
-            min-height: 64px;
-        }
-        QTabWidget::pane {
-            border: 2px solid #3a6f98;
-            border-radius: 8px;
-            background: #122033;
-        }
-        QTabBar::tab {
-            background: #0c121b;
-            padding: 12px 20px;
-            min-height: 36px;
-            min-width: 92px;
-            font-size: 13px;
-            border: 2px solid #3a6f98;
-            border-bottom: none;
-            border-top-left-radius: 8px;
-            border-top-right-radius: 8px;
-            margin-right: 6px;
-        }
-        QTabBar::tab:selected {
-            background: #121b26;
-            color: #19f5c8;
-            border-bottom: 3px solid #19f5c8;
-        }
-        QPushButton {
-            background: #121b26;
-            border: 2px solid #3a6f98;
-            border-radius: 6px;
-            padding: 4px 12px;
-            min-height: 28px;
-        }
-        QPushButton:hover {
-            background: #1b2736;
-            border-color: #4b86b3;
-        }
-        QPushButton#Primary {
-            background: #19f5c8;
-            color: #001014;
-            border-color: #19f5c8;
-        }
-        QPushButton#Primary:hover {
-            background: #38f7d6;
-        }
-        QGroupBox {
-            border: 2px solid #3a6f98;
-            border-radius: 8px;
-            margin-top: 8px;
-            background: #122033;
-        }
-        QGroupBox::title {
-            subcontrol-origin: margin;
-            left: 10px;
-            padding: 0 4px 0 4px;
-            color: #9bb3c9;
-        }
-        QGroupBox#SummaryBox, QGroupBox#DetailsBox {
-            background: #122033;
-        }
-        QLabel#FilterLabel {
-            font-size: 12px;
-            font-weight: 600;
-            color: #9bb3c9;
-            padding-right: 4px;
-        }
-        QLabel#FieldLabel {
-            font-size: 12px;
-            font-weight: 600;
-            color: #9bb3c9;
-            padding-right: 6px;
-        }
-        QLabel#CatalogScopeLabel, QLabel#CatalogSearchLabel {
-            font-size: 12px;
-            font-weight: 600;
-            color: #9bb3c9;
-            padding-right: 4px;
-        }
-        QComboBox#CatalogScope, QLineEdit#CatalogSearch {
-            min-height: 22px;
-            padding: 2px 6px;
-            margin-top: 0px;
-        }
-        QPushButton#CatalogSearchBtn, QPushButton#CatalogResetBtn {
-            padding: 4px 10px;
-            min-height: 22px;
-        }
-        QLabel#StatValue {
-            font-size: 20px;
-            font-weight: 700;
-            color: #e6f1ff;
-        }
-        QLabel#StatSub {
-            font-size: 11px;
-            color: #9bb3c9;
-        }
-        QLineEdit {
-            background: #0f1826;
-            border: 2px solid #3a6f98;
-            border-radius: 6px;
-            padding: 2px 6px;
-        }
-        QPlainTextEdit, QListWidget, QTableWidget {
-            background: #0f1826;
-            border: 2px solid #3a6f98;
-            border-radius: 6px;
-            padding: 6px 8px;
-        }
-        QLineEdit, QComboBox {
-            min-height: 22px;
-            font-size: 12px;
-        }
-        QPlainTextEdit, QTableWidget, QListWidget {
-            font-size: 12px;
-        }
-        QComboBox {
-            background: #0f1826;
-            border: 2px solid #3a6f98;
-            border-radius: 6px;
-            padding: 2px 6px;
-        }
-        QLineEdit:focus, QPlainTextEdit:focus, QComboBox:focus {
-            border-color: #19f5c8;
-        }
-        QHeaderView::section {
-            background: #121b26;
-            border: 2px solid #3a6f98;
-            padding: 8px;
-            font-size: 11px;
-        }
-        QTableWidget {
-            gridline-color: #3a6f98;
-        }
-        QTableWidget::item {
-            padding: 6px;
-        }
-        QTableWidget#SummaryTable {
-            border: none;
-        }
-        QListWidget::item {
-            padding: 6px 8px;
-        }
-        QCheckBox {
-            spacing: 8px;
-            font-size: 12px;
-            font-family: "Avenir Next";
-            padding-right: 8px;
-        }
-        QCheckBox::indicator {
-            width: 16px;
-            height: 16px;
-            border-radius: 4px;
-            border: 2px solid #3a6f98;
-            background: #0f1826;
-            margin-right: 8px;
-        }
-        QLabel#ValueReadout {
-            color: #e6f1ff;
-            padding: 2px 4px;
-        }
-        QCheckBox::indicator:checked {
-            background: #19f5c8;
-            border-color: #19f5c8;
-        }
-        QCheckBox::indicator:hover {
-            border-color: #4b86b3;
-        }
-        QScrollArea {
-            border: none;
-        }
-        QScrollBar:vertical {
-            background: #3a6f98;
-            width: 12px;
-            margin: 2px 2px 2px 0;
-        }
-        QScrollBar::handle:vertical {
-            background: #3a6f98;
-            border-radius: 5px;
-            min-height: 24px;
-        }
-        QScrollBar::handle:vertical:hover {
-            background: #19f5c8;
-        }
-        QScrollBar:horizontal {
-            background: #3a6f98;
-            height: 12px;
-            margin: 0 2px 2px 2px;
-        }
-        QScrollBar::handle:horizontal {
-            background: #3a6f98;
-            border-radius: 5px;
-            min-width: 24px;
-        }
-        QScrollBar::handle:horizontal:hover {
-            background: #19f5c8;
-        }
-        QSplitter::handle {
-            background: #3a6f98;
-        }
-        QSplitter::handle:hover {
-            background: #19f5c8;
-        }
-        QLabel#appTitle {
-            font-size: 24px;
-            font-weight: 700;
-            color: #19f5c8;
-            padding-top: 2px;
-            letter-spacing: 0.5px;
-        }
-        QLabel#HeaderLogo {
-            padding-top: 1px;
-        }
-        QLabel#SectionTitle {
-            font-size: 16px;
-            font-weight: 600;
-        }
-        """
-    )
+    tokens = {
+        "PRIMARY_ACCENT": "#19f5c8",
+        "PRIMARY_ACCENT_HOVER": "#38f7d6",
+        "PRIMARY_TEXT": "#e6f1ff",
+        "PRIMARY_TEXT_DARK": "#001014",
+        "MUTED_TEXT": "#9bb3c9",
+        "PANEL_BG": "#122033",
+        "INPUT_BG": "#0f1826",
+        "TAB_BG": "#0c121b",
+        "TAB_SELECTED_BG": "#121b26",
+        "BUTTON_BG": "#121b26",
+        "BUTTON_HOVER_BG": "#1b2736",
+        "BORDER": "#3a6f98",
+        "BORDER_HOVER": "#4b86b3",
+        "APP_BG_0": "#04060a",
+        "APP_BG_1": "#070b12",
+        "APP_BG_2": "#0b1320",
+    }
+    theme_path = ABLETOOLS_DIR / "resources" / "theme.qss"
+    if theme_path.exists():
+        raw_qss = theme_path.read_text(encoding="utf-8")
+        qss = Template(raw_qss).safe_substitute(tokens)
+        app.setStyleSheet(qss)
 
 
 def main() -> int:

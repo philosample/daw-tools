@@ -1,0 +1,231 @@
+QWidget {
+    color: $PRIMARY_TEXT;
+}
+#AppRoot {
+    background: qlineargradient(
+        x1:0, y1:0, x2:1, y2:1,
+        stop:0 $APP_BG_0,
+        stop:0.5 $APP_BG_1,
+        stop:1 $APP_BG_2
+    );
+}
+#HeaderBar {
+    border-bottom: 2px solid $BORDER;
+    min-height: 64px;
+}
+QTabWidget::pane {
+    border: 2px solid $BORDER;
+    border-radius: 8px;
+    background: $PANEL_BG;
+}
+QTabBar::tab {
+    background: $TAB_BG;
+    padding: 12px 20px;
+    min-height: 36px;
+    min-width: 92px;
+    font-size: 13px;
+    border: 2px solid $BORDER;
+    border-bottom: none;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+    margin-right: 6px;
+}
+QTabBar::tab:selected {
+    background: $TAB_SELECTED_BG;
+    color: $PRIMARY_ACCENT;
+    border-bottom: 3px solid $PRIMARY_ACCENT;
+}
+QPushButton {
+    background: $BUTTON_BG;
+    border: 2px solid $BORDER;
+    border-radius: 6px;
+    padding: 3px 12px;
+    min-height: 32px;
+}
+QPushButton:hover {
+    background: $BUTTON_HOVER_BG;
+    border-color: $BORDER_HOVER;
+}
+QPushButton#Primary {
+    background: $PRIMARY_ACCENT;
+    color: $PRIMARY_TEXT_DARK;
+    border-color: $PRIMARY_ACCENT;
+}
+QPushButton#Primary:hover {
+    background: $PRIMARY_ACCENT_HOVER;
+}
+QGroupBox {
+    border: 2px solid $BORDER;
+    border-radius: 8px;
+    margin-top: 8px;
+    background: $PANEL_BG;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 10px;
+    padding: 0 4px 0 4px;
+    color: $MUTED_TEXT;
+}
+QGroupBox#SummaryBox, QGroupBox#DetailsBox {
+    background: $PANEL_BG;
+}
+QLabel#FilterLabel {
+    font-size: 12px;
+    font-weight: 600;
+    color: $MUTED_TEXT;
+    padding-right: 4px;
+}
+QLabel#FieldLabel {
+    font-size: 12px;
+    font-weight: 600;
+    color: $MUTED_TEXT;
+    padding-right: 6px;
+}
+QLabel#HintText {
+    font-size: 11px;
+    color: $MUTED_TEXT;
+}
+QLabel#CatalogScopeLabel, QLabel#CatalogSearchLabel {
+    font-size: 12px;
+    font-weight: 600;
+    color: $MUTED_TEXT;
+    padding-right: 4px;
+}
+QComboBox#CatalogScope, QLineEdit#CatalogSearch {
+    min-height: 22px;
+    padding: 2px 6px;
+    margin-top: 0px;
+}
+QPushButton#CatalogSearchBtn, QPushButton#CatalogResetBtn {
+    padding: 4px 10px;
+    min-height: 22px;
+}
+QLabel#StatValue {
+    font-size: 20px;
+    font-weight: 700;
+    color: $PRIMARY_TEXT;
+}
+QLabel#StatSub {
+    font-size: 11px;
+    color: $MUTED_TEXT;
+}
+QLineEdit {
+    background: $INPUT_BG;
+    border: 2px solid $BORDER;
+    border-radius: 6px;
+    padding: 2px 6px;
+}
+QPlainTextEdit, QListWidget, QTableWidget {
+    background: $INPUT_BG;
+    border: 2px solid $BORDER;
+    border-radius: 6px;
+    padding: 6px 8px;
+}
+QLineEdit, QComboBox {
+    min-height: 22px;
+    font-size: 12px;
+}
+QPlainTextEdit, QTableWidget, QListWidget {
+    font-size: 12px;
+}
+QComboBox {
+    background: $INPUT_BG;
+    border: 2px solid $BORDER;
+    border-radius: 6px;
+    padding: 2px 6px;
+}
+QLineEdit:focus, QPlainTextEdit:focus, QComboBox:focus {
+    border-color: $PRIMARY_ACCENT;
+}
+QHeaderView::section {
+    background: $TAB_SELECTED_BG;
+    border: 2px solid $BORDER;
+    padding: 8px;
+    font-size: 11px;
+}
+QTableWidget {
+    gridline-color: $BORDER;
+}
+QTableWidget::item {
+    padding: 6px;
+}
+QTableWidget#SummaryTable {
+    border: none;
+}
+QListWidget::item {
+    padding: 6px 8px;
+}
+QCheckBox {
+    spacing: 8px;
+    font-size: 12px;
+    font-family: "Avenir Next";
+    padding-right: 8px;
+}
+QCheckBox::indicator {
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    border: 2px solid $BORDER;
+    background: $INPUT_BG;
+    margin-right: 8px;
+}
+QLabel#ValueReadout {
+    color: $PRIMARY_TEXT;
+    padding: 2px 4px;
+}
+QCheckBox::indicator:checked {
+    background: $PRIMARY_ACCENT;
+    border-color: $PRIMARY_ACCENT;
+}
+QCheckBox::indicator:hover {
+    border-color: $BORDER_HOVER;
+}
+QScrollArea {
+    border: none;
+}
+QScrollBar:vertical {
+    background: $BORDER;
+    width: 12px;
+    margin: 2px 2px 2px 0;
+}
+QScrollBar::handle:vertical {
+    background: $BORDER;
+    border-radius: 5px;
+    min-height: 24px;
+}
+QScrollBar::handle:vertical:hover {
+    background: $PRIMARY_ACCENT;
+}
+QScrollBar:horizontal {
+    background: $BORDER;
+    height: 12px;
+    margin: 0 2px 2px 2px;
+}
+QScrollBar::handle:horizontal {
+    background: $BORDER;
+    border-radius: 5px;
+    min-width: 24px;
+}
+QScrollBar::handle:horizontal:hover {
+    background: $PRIMARY_ACCENT;
+}
+QSplitter::handle {
+    background: $BORDER;
+}
+QSplitter::handle:hover {
+    background: $PRIMARY_ACCENT;
+}
+QLabel#appTitle {
+    font-size: 24px;
+    font-weight: 700;
+    color: $PRIMARY_ACCENT;
+    padding-top: 2px;
+    letter-spacing: 0.5px;
+}
+QLabel#HeaderLogo {
+    padding-top: 1px;
+}
+QLabel#SectionTitle {
+    font-size: 16px;
+    font-weight: 600;
+}

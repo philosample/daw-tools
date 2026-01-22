@@ -3,6 +3,9 @@
 This catalog enumerates every UI object (widgets + layouts + style roles) used in the Qt UI.
 It is the authoritative inventory used to enforce spacing/sizing rules and to drive future UI changes.
 
+## Global theme
+- `resources/theme.qss` with token substitution in `apply_theme()` (source of UI colors + base styling).
+
 ## Global layout objects
 - `QVBoxLayout` / `QHBoxLayout`
   - Default spacing: `SPACE_PANEL` (12) for vertical stacks, `SPACE_ROW` (12) for rows.
@@ -37,12 +40,14 @@ It is the authoritative inventory used to enforce spacing/sizing rules and to dr
 - `_action_row(*widgets, align=\"left|center|right\")` → `QWidget` with `QHBoxLayout` and standard top/bottom padding.
 - `_action_status_row(*widgets, status=QLabel)` → `QWidget` with status label anchored right.
 - `_controls_bar(*items)` → `QWidget` with standard control-row margins and center alignment.
+- `_hgap(width)` → `QWidget` fixed-width spacer for control rows.
+- `_boxed_row(*widgets, align="left|center|right")` → `QWidget` that adds consistent top/bottom spacing around an action row.
 
 ## Style roles (object names / QSS roles)
 - `SectionTitle`, `FilterLabel`, `FieldLabel`, `CatalogScopeLabel`, `CatalogSearchLabel`
 - `CatalogScope`, `CatalogSearch`, `CatalogSearchBtn`, `CatalogResetBtn`
 - `SummaryBox`, `DetailsBox`, `SummaryTable`
-- `StatValue`, `StatSub`
+- `StatValue`, `StatSub`, `ValueReadout`, `HintText`
 - `Primary` (primary button)
 
 ## Non-widget display helpers

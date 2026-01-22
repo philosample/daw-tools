@@ -24,6 +24,8 @@ Formal name: **Design System** (also called a **UI Style Guide** or **Component 
 - **Grid gutters:** 12px between card rows/columns for dashboards and summary grids.
 - **Border spacing:** default 12px between adjacent bordered elements (cards, panels, subpanels).
 - **Row spacing:** default 12px between controls; use 8px for tight control rows.
+- **Control row height:** use `FieldLabel` height (22px) for filters/scope/search labels and checkboxes.
+- **Buttons:** fixed height 32px; padding 3px 12px to avoid clipping.
 - **Group padding:** 12px internal padding for group boxes and card containers.
 - **Section gap:** 16px between major vertical sections (stacked panels/rows).
 
@@ -38,6 +40,9 @@ Formal name: **Design System** (also called a **UI Style Guide** or **Component 
 - Rounded top tabs with 2px border
 - Selected tab shows neon underline (3px)
 - Minimum width 92px for consistent click targets
+
+### Hint Text
+- Use `HintText` role for muted explanatory copy (11px, muted color).
 
 ### Buttons
 - **Primary:** neon fill (`#19f5c8`), dark text
@@ -90,7 +95,7 @@ Formal name: **Design System** (also called a **UI Style Guide** or **Component 
 - If a new pattern is required, update this guide alongside the code change.
 - All layouts should use shared helpers (`_vbox`, `_hbox`, `_grid`) to enforce spacing rules.
 - Each panel builds its UI in dedicated methods; avoid ad-hoc widget construction inline.
-- Widgets should be created via factory helpers (`_button`, `_label`, `_value_label`, `_checkbox`, `_line_edit`, `_combo`, `_group`, `_group_box`, `_checkbox_row`, `_action_row`, `_action_status_row`, `_controls_bar`).
+- Widgets should be created via factory helpers (`_button`, `_label`, `_value_label`, `_checkbox`, `_line_edit`, `_combo`, `_group`, `_group_box`, `_checkbox_row`, `_action_row`, `_action_status_row`, `_controls_bar`, `_hgap`).
 - Maintain the UI catalog (`docs/UI_CATALOG.md`) with new elements, layout objects, and style roles.
 - Use UI hierarchy levels: **Tab view (panel inset) → Groups → Rows/Grids → Controls**.
 
@@ -100,6 +105,7 @@ Formal name: **Design System** (also called a **UI Style Guide** or **Component 
 
 ## Implementation guidelines
 - All visual tokens live in `apply_theme()` (QSS + palette).
+- QSS is stored in `resources/theme.qss` and substituted with token values in `apply_theme()`.
 - Component construction should assign object names for styling hooks:
   - `Primary` for primary buttons
   - `HeaderBar`, `HeaderLogo`, `appTitle`, `SectionTitle`
