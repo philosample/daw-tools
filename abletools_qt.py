@@ -60,7 +60,7 @@ def is_backup_path(path: str) -> bool:
     return bool(_TIMESTAMP_BRACKET_RE.search(p.name))
 
 
-def _set_combo_width(combo: QComboBox, padding: int = 28, minimum: int | None = None) -> None:
+def _set_combo_width(combo: QComboBox, padding: int = 44, minimum: int | None = None) -> None:
     metrics = QFontMetrics(combo.font())
     widest = 0
     for idx in range(combo.count()):
@@ -69,6 +69,195 @@ def _set_combo_width(combo: QComboBox, padding: int = 28, minimum: int | None = 
     if minimum is not None:
         width = max(width, minimum)
     combo.setFixedWidth(width)
+
+
+SPACE_PANEL = 12
+SPACE_ROW = 12
+SPACE_TIGHT = 8
+SPACE_SECTION = 16
+
+
+def _vbox(parent: QWidget | None = None, spacing: int = SPACE_PANEL) -> QVBoxLayout:
+    layout = QVBoxLayout(parent) if parent is not None else QVBoxLayout()
+    layout.setSpacing(spacing)
+    layout.setContentsMargins(0, 0, 0, 0)
+    return layout
+
+
+def _hbox(parent: QWidget | None = None, spacing: int = SPACE_ROW) -> QHBoxLayout:
+    layout = QHBoxLayout(parent) if parent is not None else QHBoxLayout()
+    layout.setSpacing(spacing)
+    layout.setContentsMargins(0, 0, 0, 0)
+    return layout
+
+
+def _grid(parent: QWidget | None = None, spacing: int = SPACE_PANEL) -> QGridLayout:
+    layout = QGridLayout(parent) if parent is not None else QGridLayout()
+    layout.setHorizontalSpacing(spacing)
+    layout.setVerticalSpacing(spacing)
+    layout.setContentsMargins(0, 0, 0, 0)
+    return layout
+
+
+def _panel_margins(layout: QVBoxLayout, inset: int = SPACE_PANEL) -> None:
+    layout.setContentsMargins(inset, inset, inset, inset)
+
+
+def _label(text: str, name: str | None = None) -> QLabel:
+    label = QLabel(text)
+    if name:
+        label.setObjectName(name)
+    return label
+
+
+def _image_label() -> QLabel:
+    return QLabel()
+
+
+def _section_title(text: str) -> QLabel:
+    return _label(text, "SectionTitle")
+
+
+def _field_label(
+    text: str, buddy: QWidget | None = None, name: str | None = "FieldLabel"
+) -> QLabel:
+    label = _label(text, name)
+    label.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+    label.setFixedHeight(22)
+    if buddy is not None:
+        label.setBuddy(buddy)
+    return label
+
+
+def _button(text: str, primary: bool = False, name: str | None = None) -> QPushButton:
+    btn = QPushButton(text)
+    btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+    btn.setFixedHeight(30)
+    if primary:
+        btn.setObjectName("Primary")
+    elif name:
+        btn.setObjectName(name)
+    return btn
+
+
+def _checkbox(text: str, checked: bool | None = None, name: str | None = None) -> QCheckBox:
+    cb = QCheckBox(text)
+    if checked is not None:
+        cb.setChecked(checked)
+    if name:
+        cb.setObjectName(name)
+    return cb
+
+
+def _line_edit(
+    text: str | None = None,
+    placeholder: str | None = None,
+    name: str | None = None,
+) -> QLineEdit:
+    edit = QLineEdit(text or "")
+    if placeholder:
+        edit.setPlaceholderText(placeholder)
+    if name:
+        edit.setObjectName(name)
+    edit.setFixedHeight(22)
+    return edit
+
+
+def _combo(items: list[str], name: str | None = None) -> QComboBox:
+    combo = QComboBox()
+    combo.addItems(items)
+    if name:
+        combo.setObjectName(name)
+    combo.setFixedHeight(22)
+    return combo
+
+
+def _group(title: str) -> QGroupBox:
+    return QGroupBox(title)
+
+
+def _plain_text(font: QFont | None = None) -> QPlainTextEdit:
+    box = QPlainTextEdit()
+    if font:
+        box.setFont(font)
+    return box
+
+
+def _section_gap(layout: QVBoxLayout, amount: int = SPACE_SECTION) -> None:
+    layout.addSpacing(amount)
+
+
+def _checkbox_row(*boxes: QCheckBox) -> QWidget:
+    row = QWidget()
+    layout = _hbox(row)
+    layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+    for box in boxes:
+        layout.addWidget(box)
+    layout.addStretch(1)
+    return row
+
+
+def _action_row(
+    *widgets: QWidget, align: str = "left", top: int = 8, bottom: int = 8
+) -> QWidget:
+    row = QWidget()
+    layout = _hbox(row)
+    layout.setContentsMargins(0, top, 0, bottom)
+    layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+    if align == "right":
+        layout.addStretch(1)
+        for widget in widgets:
+            layout.addWidget(widget)
+        return row
+    if align == "center":
+        layout.addStretch(1)
+    for widget in widgets:
+        layout.addWidget(widget)
+    layout.addStretch(1)
+    return row
+
+
+def _table(
+    columns: int,
+    headers: list[str] | None = None,
+    selection_mode: QTableWidget.SelectionMode = QTableWidget.SelectionMode.SingleSelection,
+    select_rows: bool = True,
+    name: str | None = None,
+) -> QTableWidget:
+    table = QTableWidget(0, columns)
+    if headers:
+        table.setHorizontalHeaderLabels(headers)
+    if select_rows:
+        table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+    table.setSelectionMode(selection_mode)
+    if name:
+        table.setObjectName(name)
+    return table
+
+
+def _list(name: str | None = None) -> QListWidget:
+    widget = QListWidget()
+    if name:
+        widget.setObjectName(name)
+    return widget
+
+
+def _scroll_area(name: str | None = None) -> QScrollArea:
+    scroll = QScrollArea()
+    scroll.setWidgetResizable(True)
+    scroll.setFrameShape(QFrame.Shape.NoFrame)
+    scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    if name:
+        scroll.setObjectName(name)
+    return scroll
+
+
+def _splitter(orientation: Qt.Orientation, name: str | None = None) -> QSplitter:
+    splitter = QSplitter(orientation)
+    splitter.setChildrenCollapsible(False)
+    if name:
+        splitter.setObjectName(name)
+    return splitter
 
 
 class ScanWorker(QThread):
@@ -223,43 +412,45 @@ class TargetedSetDialog(QDialog):
         self._items = items
         self._filtered: list[dict[str, str]] = []
         self._ignore_backups = not include_backups
+        self._build_ui()
+        self._refresh_table()
 
-        layout = QVBoxLayout(self)
+    def _build_ui(self) -> None:
+        layout = _vbox(self)
 
-        header = QHBoxLayout()
+        header = _hbox()
         header.setSpacing(12)
         header.setContentsMargins(0, 0, 0, 0)
         header.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-        header.addWidget(QLabel("Search:"))
-        self.search_edit = QLineEdit()
+        header_label = _field_label("Search:")
+        header.addWidget(header_label)
+        self.search_edit = _line_edit()
+        header_label.setBuddy(self.search_edit)
         self.search_edit.textChanged.connect(self._refresh_table)
         header.addWidget(self.search_edit)
-        self.ignore_backups = QCheckBox("Ignore backups")
+        self.ignore_backups = _checkbox("Ignore backups")
         self.ignore_backups.setChecked(self._ignore_backups)
         self.ignore_backups.stateChanged.connect(self._refresh_table)
         header.addWidget(self.ignore_backups)
         layout.addLayout(header)
 
-        self.table = QTableWidget(0, 6)
-        self.table.setHorizontalHeaderLabels(
-            ["Scope", "Name", "Path", "Modified", "Tracks", "Clips"]
+        self.table = _table(
+            6,
+            headers=["Scope", "Name", "Path", "Modified", "Tracks", "Clips"],
+            selection_mode=QTableWidget.SelectionMode.ExtendedSelection,
         )
-        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.table.setSelectionMode(QTableWidget.SelectionMode.ExtendedSelection)
         self.table.horizontalHeader().setStretchLastSection(True)
         layout.addWidget(self.table)
 
-        footer = QHBoxLayout()
+        footer = _hbox()
         footer.addStretch(1)
-        self.apply_btn = QPushButton("Use Selected")
+        self.apply_btn = _button("Use Selected", primary=True)
         self.apply_btn.clicked.connect(self.accept)
         footer.addWidget(self.apply_btn)
-        cancel_btn = QPushButton("Cancel")
+        cancel_btn = _button("Cancel")
         cancel_btn.clicked.connect(self.reject)
         footer.addWidget(cancel_btn)
         layout.addLayout(footer)
-
-        self._refresh_table()
 
     def selected_items(self) -> list[dict[str, str]]:
         items = []
@@ -303,68 +494,70 @@ class DashboardView(QWidget):
     def __init__(self, catalog: CatalogService) -> None:
         super().__init__()
         self.catalog = catalog
-        layout = QVBoxLayout(self)
-        layout.setSpacing(12)
-        layout.setContentsMargins(0, 0, 0, 0)
+        self._build_ui()
+        self.refresh()
 
-        header = QHBoxLayout()
-        title = QLabel("Dashboard")
-        title.setObjectName("SectionTitle")
+    def _build_ui(self) -> None:
+        layout = _vbox(self)
+        _panel_margins(layout)
+
+        header = _hbox()
+        title = _section_title("Dashboard")
         header.addWidget(title)
-        self.scope_combo = QComboBox()
-        self.scope_combo.addItems(["live_recordings", "user_library"])
+        self.scope_combo = _combo(["live_recordings", "user_library"])
         self.scope_combo.currentTextChanged.connect(self.refresh)
-        _set_combo_width(self.scope_combo, padding=26)
+        _set_combo_width(self.scope_combo, padding=44)
         header.addWidget(self.scope_combo)
         header.addStretch(1)
-        refresh_btn = QPushButton("Refresh")
-        refresh_btn.setObjectName("Primary")
+        refresh_btn = _button("Refresh", primary=True)
         refresh_btn.clicked.connect(self.refresh)
         header.addWidget(refresh_btn)
         layout.addLayout(header)
+        _section_gap(layout)
 
-        cards = QGridLayout()
-        cards.setHorizontalSpacing(12)
-        cards.setVerticalSpacing(12)
+        cards = _grid()
         self.card_sets_value, self.card_sets_sub = self._stat_card(cards, "Total Sets", 0)
         self.card_set_size_value, _ = self._stat_card(cards, "Set Size", 1)
         self.card_audio_size_value, _ = self._stat_card(cards, "Audio Size", 2)
         self.card_missing_value, _ = self._stat_card(cards, "Sets Missing Refs", 3)
         layout.addLayout(cards)
+        _section_gap(layout)
 
-        activity_box = QGroupBox("Catalog Status")
-        activity_layout = QVBoxLayout(activity_box)
-        self.activity_text = QPlainTextEdit()
+        activity_box = _group("Catalog Status")
+        activity_layout = _vbox(activity_box)
+        activity_layout.setContentsMargins(12, 12, 12, 12)
+        self.activity_text = _plain_text(QFont("Menlo", 11))
         self.activity_text.setReadOnly(True)
-        self.activity_text.setFont(QFont("Menlo", 11))
         activity_layout.addWidget(self.activity_text)
         layout.addWidget(activity_box)
+        _section_gap(layout)
 
-        backup_box = QGroupBox("Backups")
-        backup_layout = QHBoxLayout(backup_box)
-        backup_sets = QPushButton("Backup Sets")
-        backup_sets.setObjectName("Primary")
+        backup_box = _group("Backups")
+        backup_layout = _vbox(backup_box)
+        backup_layout.setContentsMargins(12, 16, 12, 16)
+        backup_layout.setSpacing(SPACE_PANEL)
+        backup_row = _hbox()
+        backup_sets = _button("Backup Sets", primary=True)
         backup_sets.clicked.connect(self._backup_sets)
-        backup_layout.addWidget(backup_sets)
-        backup_audio = QPushButton("Backup Audio")
+        backup_row.addWidget(backup_sets)
+        backup_audio = _button("Backup Audio")
         backup_audio.clicked.connect(self._backup_audio)
-        backup_layout.addWidget(backup_audio)
-        cleanup_btn = QPushButton("Clean Catalog")
+        backup_row.addWidget(backup_audio)
+        cleanup_btn = _button("Clean Catalog")
         cleanup_btn.clicked.connect(self._cleanup_catalog)
-        backup_layout.addWidget(cleanup_btn)
-        backup_layout.addStretch(1)
+        backup_row.addWidget(cleanup_btn)
+        backup_row.addStretch(1)
+        backup_layout.addLayout(backup_row)
         layout.addWidget(backup_box)
+        _section_gap(layout)
 
-        lists_layout = QGridLayout()
-        lists_layout.setHorizontalSpacing(12)
-        lists_layout.setVerticalSpacing(12)
-        self.top_devices = QPlainTextEdit()
-        self.top_plugins = QPlainTextEdit()
-        self.top_chains = QPlainTextEdit()
-        self.top_missing = QPlainTextEdit()
+        lists_layout = _grid()
+        self.top_devices = _plain_text(QFont("Menlo", 11))
+        self.top_plugins = _plain_text(QFont("Menlo", 11))
+        self.top_chains = _plain_text(QFont("Menlo", 11))
+        self.top_missing = _plain_text(QFont("Menlo", 11))
         for widget in [self.top_devices, self.top_plugins, self.top_chains, self.top_missing]:
             widget.setReadOnly(True)
-            widget.setFont(QFont("Menlo", 11))
             widget.setMaximumHeight(140)
 
         lists_layout.addWidget(_boxed("Top Devices", self.top_devices), 0, 0)
@@ -374,15 +567,11 @@ class DashboardView(QWidget):
         layout.addLayout(lists_layout)
         layout.addStretch(1)
 
-        self.refresh()
-
     def _stat_card(self, layout: QGridLayout, title: str, col: int) -> tuple[QLabel, QLabel]:
-        box = QGroupBox(title)
-        box_layout = QVBoxLayout(box)
-        value = QLabel("-")
-        value.setObjectName("StatValue")
-        sub = QLabel("")
-        sub.setObjectName("StatSub")
+        box = _group(title)
+        box_layout = _vbox(box)
+        value = _label("-", "StatValue")
+        sub = _label("", "StatSub")
         box_layout.addWidget(value)
         box_layout.addWidget(sub)
         layout.addWidget(box, 0, col)
@@ -459,32 +648,32 @@ class DashboardView(QWidget):
         dialog = QDialog(self)
         dialog.setWindowTitle("Clean Catalog")
         dialog.resize(520, 360)
-        layout = QVBoxLayout(dialog)
-        layout.addWidget(QLabel("Select items to remove from .abletools_catalog"))
+        layout = _vbox(dialog)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.addWidget(_label("Select items to remove from .abletools_catalog"))
 
         options = {
-            "logs": QCheckBox("Old scan logs + audit reports"),
-            "xml_nodes": QCheckBox("XML nodes JSONL (large)"),
-            "device_params": QCheckBox("Device params JSONL (large)"),
-            "refs_graph": QCheckBox("Refs graph JSONL"),
-            "struct": QCheckBox("Struct/clip/routing JSONL"),
-            "scan_state": QCheckBox("Scan + dir state (incremental cache)"),
+            "logs": _checkbox("Old scan logs + audit reports"),
+            "xml_nodes": _checkbox("XML nodes JSONL (large)"),
+            "device_params": _checkbox("Device params JSONL (large)"),
+            "refs_graph": _checkbox("Refs graph JSONL"),
+            "struct": _checkbox("Struct/clip/routing JSONL"),
+            "scan_state": _checkbox("Scan + dir state (incremental cache)"),
         }
         defaults = {"logs": True, "xml_nodes": True, "device_params": True}
         for key, checkbox in options.items():
             checkbox.setChecked(defaults.get(key, False))
             layout.addWidget(checkbox)
 
-        optimize_cb = QCheckBox("Optimize DB after cleanup (ANALYZE + VACUUM)")
+        optimize_cb = _checkbox("Optimize DB after cleanup (ANALYZE + VACUUM)")
         optimize_cb.setChecked(True)
-        rebuild_cb = QCheckBox("Rebuild DB from remaining JSONL (overwrite)")
+        rebuild_cb = _checkbox("Rebuild DB from remaining JSONL (overwrite)")
         layout.addWidget(optimize_cb)
         layout.addWidget(rebuild_cb)
 
-        btns = QHBoxLayout()
-        run_btn = QPushButton("Clean")
-        run_btn.setObjectName("Primary")
-        cancel_btn = QPushButton("Cancel")
+        btns = _hbox()
+        run_btn = _button("Clean", primary=True)
+        cancel_btn = _button("Cancel")
         btns.addWidget(run_btn)
         btns.addWidget(cancel_btn)
         btns.addStretch(1)
@@ -529,31 +718,31 @@ class InsightsView(QWidget):
     def __init__(self, catalog: CatalogService) -> None:
         super().__init__()
         self.catalog = catalog
-        layout = QVBoxLayout(self)
-        layout.setSpacing(12)
+        self._build_ui()
+        self.refresh()
 
-        header = QHBoxLayout()
-        title = QLabel("Insights")
-        title.setObjectName("SectionTitle")
+    def _build_ui(self) -> None:
+        layout = _vbox(self)
+        _panel_margins(layout)
+
+        header = _hbox()
+        title = _section_title("Insights")
         header.addWidget(title)
         header.addStretch(1)
-        refresh_btn = QPushButton("Refresh")
-        refresh_btn.setObjectName("Primary")
+        refresh_btn = _button("Refresh", primary=True)
         refresh_btn.clicked.connect(self.refresh)
         header.addWidget(refresh_btn)
         layout.addLayout(header)
+        _section_gap(layout)
 
-        self.scope_combo = QComboBox()
-        self.scope_combo.addItems(["live_recordings", "user_library", "preferences"])
+        self.scope_combo = _combo(["live_recordings", "user_library", "preferences"])
         self.scope_combo.currentTextChanged.connect(self.refresh)
         layout.addWidget(self.scope_combo)
+        _section_gap(layout)
 
-        self.text = QPlainTextEdit()
+        self.text = _plain_text(QFont("Menlo", 11))
         self.text.setReadOnly(True)
-        self.text.setFont(QFont("Menlo", 11))
         layout.addWidget(self.text)
-
-        self.refresh()
 
     def refresh(self) -> None:
         scope = self.scope_combo.currentText() or "live_recordings"
@@ -624,51 +813,74 @@ class ScanView(QWidget):
         self.targeted_items: list[dict[str, str]] = []
         self.worker: Optional[ScanWorker] = None
         self._log_file: Optional[Path] = None
+        self._build_ui()
 
-        layout = QVBoxLayout(self)
-        layout.setSpacing(12)
+    def _build_ui(self) -> None:
+        layout = _vbox(self)
+        _panel_margins(layout)
 
-        header = QHBoxLayout()
-        title = QLabel("Scan")
-        title.setObjectName("SectionTitle")
+        self._build_header(layout)
+        self._build_root_row(layout)
+        _section_gap(layout)
+        self._build_scope_row(layout)
+        _section_gap(layout)
+        self._build_full_group(layout)
+        _section_gap(layout)
+        self._build_targeted_group(layout)
+        _section_gap(layout)
+        self._build_buttons(layout)
+        _section_gap(layout)
+        self._build_log(layout)
+
+    def _build_header(self, layout: QVBoxLayout) -> None:
+        header = _hbox()
+        title = _section_title("Scan")
         header.addWidget(title)
         header.addStretch(1)
         layout.addLayout(header)
 
-        root_row = QHBoxLayout()
-        root_row.setSpacing(8)
-        root_row.addWidget(QLabel("Root folder:"))
-        self.root_edit = QLineEdit(str(self._default_root()))
+    def _build_root_row(self, layout: QVBoxLayout) -> None:
+        root_row = _hbox()
+        root_row.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+        root_label = _field_label("Root folder:")
+        self.root_edit = _line_edit(str(self._default_root()))
+        self.root_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        root_label.setBuddy(self.root_edit)
+        root_row.addWidget(root_label)
         root_row.addWidget(self.root_edit)
-        browse_btn = QPushButton("Browse")
+        browse_btn = _button("Browse")
         browse_btn.clicked.connect(self._browse_root)
         root_row.addWidget(browse_btn)
         layout.addLayout(root_row)
 
-        scope_row = QHBoxLayout()
-        scope_row.setSpacing(8)
-        scope_row.addWidget(QLabel("Scope:"))
-        self.scope_combo = QComboBox()
-        self.scope_combo.addItems(["live_recordings", "user_library", "preferences", "all"])
+    def _build_scope_row(self, layout: QVBoxLayout) -> None:
+        scope_row = _hbox()
+        scope_row.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+        scope_label = _field_label("Scope:")
+        self.scope_combo = _combo(["live_recordings", "user_library", "preferences", "all"])
+        self.scope_combo.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        scope_label.setBuddy(self.scope_combo)
+        scope_row.addWidget(scope_label)
         scope_row.addWidget(self.scope_combo)
         scope_row.addStretch(1)
         layout.addLayout(scope_row)
 
-        full_group = QGroupBox("Full Scan")
-        full_layout = QGridLayout(full_group)
-        full_layout.setHorizontalSpacing(12)
-        full_layout.setVerticalSpacing(8)
-        self.incremental_cb = QCheckBox("Incremental (skip unchanged)")
-        self.include_media_cb = QCheckBox("Include media files")
-        self.hash_cb = QCheckBox("Compute hashes")
-        self.analyze_audio_cb = QCheckBox("Analyze audio")
-        self.include_backups_cb = QCheckBox("Include Backup folders")
-        self.changed_only_cb = QCheckBox("Changed-only scan")
-        self.checkpoint_cb = QCheckBox("Write checkpoints")
-        self.resume_cb = QCheckBox("Resume checkpoint")
-        self.rehash_cb = QCheckBox("Rehash unchanged")
-        self.hash_docs_cb = QCheckBox("Hash Ableton sets only")
-        self.full_advanced_toggle = QCheckBox("Advanced options")
+    def _build_full_group(self, layout: QVBoxLayout) -> None:
+        full_group = _group("Full Scan")
+        full_layout = _grid(full_group, spacing=SPACE_PANEL)
+        full_layout.setVerticalSpacing(SPACE_PANEL)
+        full_layout.setContentsMargins(12, 12, 12, 12)
+        self.incremental_cb = _checkbox("Incremental (skip unchanged)")
+        self.include_media_cb = _checkbox("Include media files")
+        self.hash_cb = _checkbox("Compute hashes")
+        self.analyze_audio_cb = _checkbox("Analyze audio")
+        self.include_backups_cb = _checkbox("Include Backup folders")
+        self.changed_only_cb = _checkbox("Changed-only scan")
+        self.checkpoint_cb = _checkbox("Write checkpoints")
+        self.resume_cb = _checkbox("Resume checkpoint")
+        self.rehash_cb = _checkbox("Rehash unchanged")
+        self.hash_docs_cb = _checkbox("Hash Ableton sets only")
+        self.full_advanced_toggle = _checkbox("Advanced options")
         self.full_advanced_toggle.setChecked(False)
         for cb in [
             self.incremental_cb,
@@ -684,10 +896,8 @@ class ScanView(QWidget):
         full_layout.addWidget(self.full_advanced_toggle, 1, 0, 1, 2)
 
         self.full_advanced_box = QWidget()
-        full_adv_layout = QGridLayout(self.full_advanced_box)
-        full_adv_layout.setContentsMargins(0, 0, 0, 0)
-        full_adv_layout.setHorizontalSpacing(12)
-        full_adv_layout.setVerticalSpacing(8)
+        full_adv_layout = _grid(self.full_advanced_box, spacing=SPACE_PANEL)
+        full_adv_layout.setVerticalSpacing(SPACE_PANEL)
         full_adv_layout.addWidget(self.include_backups_cb, 0, 0)
         full_adv_layout.addWidget(self.changed_only_cb, 0, 1)
         full_adv_layout.addWidget(self.checkpoint_cb, 0, 2)
@@ -699,69 +909,74 @@ class ScanView(QWidget):
         full_layout.addWidget(self.full_advanced_box, 2, 0, 1, 4)
         layout.addWidget(full_group)
 
-        targeted_group = QGroupBox("Targeted Scan")
-        targeted_layout = QGridLayout(targeted_group)
-        targeted_layout.setHorizontalSpacing(12)
-        targeted_layout.setVerticalSpacing(8)
-        select_btn = QPushButton("Select Sets")
-        select_btn.setObjectName("Primary")
-        select_btn.clicked.connect(self._select_sets)
-        targeted_layout.addWidget(select_btn, 0, 0)
-        self.targeted_summary = QLabel("No targeted sets selected.")
-        targeted_layout.addWidget(self.targeted_summary, 0, 1, 1, 3)
+    def _build_targeted_group(self, layout: QVBoxLayout) -> None:
+        targeted_group = _group("Targeted Scan")
+        targeted_layout = _vbox(targeted_group, spacing=SPACE_PANEL)
+        targeted_layout.setContentsMargins(12, 12, 12, 12)
 
-        self.struct_cb = QCheckBox("Struct")
-        self.clips_cb = QCheckBox("Clips")
-        self.devices_cb = QCheckBox("Devices")
-        self.routing_cb = QCheckBox("Routing")
-        self.refs_cb = QCheckBox("Refs")
+        select_row = _hbox()
+        select_btn = _button("Select Sets", primary=True)
+        select_btn.clicked.connect(self._select_sets)
+        self.targeted_summary = _label("No targeted sets selected.")
+        select_row.addWidget(select_btn)
+        select_row.addWidget(self.targeted_summary)
+        select_row.addStretch(1)
+        targeted_layout.addLayout(select_row)
+
+        self.struct_cb = _checkbox("Struct")
+        self.clips_cb = _checkbox("Clips")
+        self.devices_cb = _checkbox("Devices")
+        self.routing_cb = _checkbox("Routing")
+        self.refs_cb = _checkbox("Refs")
         for cb in [self.struct_cb, self.clips_cb, self.devices_cb, self.routing_cb, self.refs_cb]:
             cb.setChecked(True)
-        targeted_layout.addWidget(self.struct_cb, 1, 0)
-        targeted_layout.addWidget(self.clips_cb, 1, 1)
-        targeted_layout.addWidget(self.devices_cb, 1, 2)
-        targeted_layout.addWidget(self.routing_cb, 1, 3)
-        targeted_layout.addWidget(self.refs_cb, 1, 4)
+        checks_row = _checkbox_row(
+            self.struct_cb,
+            self.clips_cb,
+            self.devices_cb,
+            self.routing_cb,
+            self.refs_cb,
+        )
+        targeted_layout.addWidget(checks_row)
 
-        self.deep_snapshot_cb = QCheckBox("Deep XML snapshot")
-        self.xml_nodes_cb = QCheckBox("XML nodes (huge)")
-        self.targeted_advanced_toggle = QCheckBox("Advanced options")
+        self.deep_snapshot_cb = _checkbox("Deep XML snapshot")
+        self.xml_nodes_cb = _checkbox("XML nodes (huge)")
+        self.targeted_advanced_toggle = _checkbox("Advanced options")
         self.targeted_advanced_toggle.setChecked(False)
-        targeted_layout.addWidget(self.targeted_advanced_toggle, 2, 0, 1, 2)
+        targeted_layout.addWidget(self.targeted_advanced_toggle)
         self.targeted_advanced_box = QWidget()
-        targeted_adv_layout = QGridLayout(self.targeted_advanced_box)
-        targeted_adv_layout.setContentsMargins(0, 0, 0, 0)
-        targeted_adv_layout.setHorizontalSpacing(12)
-        targeted_adv_layout.setVerticalSpacing(8)
-        targeted_adv_layout.addWidget(self.deep_snapshot_cb, 0, 0)
-        targeted_adv_layout.addWidget(self.xml_nodes_cb, 0, 1)
+        targeted_adv_layout = _hbox(self.targeted_advanced_box)
+        targeted_adv_layout.addWidget(self.deep_snapshot_cb)
+        targeted_adv_layout.addWidget(self.xml_nodes_cb)
+        targeted_adv_layout.addStretch(1)
         self.targeted_advanced_box.setVisible(False)
         self.targeted_advanced_toggle.toggled.connect(self.targeted_advanced_box.setVisible)
-        targeted_layout.addWidget(self.targeted_advanced_box, 3, 0, 1, 4)
+        targeted_layout.addWidget(self.targeted_advanced_box)
         layout.addWidget(targeted_group)
 
-        btn_row = QHBoxLayout()
-        self.run_full_btn = QPushButton("Run Full Scan")
-        self.run_full_btn.setObjectName("Primary")
+    def _build_buttons(self, layout: QVBoxLayout) -> None:
+        btn_row = _hbox()
+        self.run_full_btn = _button("Run Full Scan", primary=True)
         self.run_full_btn.clicked.connect(self._run_full)
         btn_row.addWidget(self.run_full_btn)
-        self.run_targeted_btn = QPushButton("Run Targeted")
+        self.run_targeted_btn = _button("Run Targeted")
         self.run_targeted_btn.clicked.connect(self._run_targeted)
         btn_row.addWidget(self.run_targeted_btn)
-        self.cancel_btn = QPushButton("Cancel")
+        self.cancel_btn = _button("Cancel")
         self.cancel_btn.clicked.connect(self._cancel)
         self.cancel_btn.setEnabled(False)
         btn_row.addWidget(self.cancel_btn)
         btn_row.addStretch(1)
-        self.status_label = QLabel("Idle")
+        self.status_label = _label("Idle")
         btn_row.addWidget(self.status_label)
         layout.addLayout(btn_row)
 
+    def _build_log(self, layout: QVBoxLayout) -> None:
         log_container = QWidget()
         log_stack = QStackedLayout(log_container)
         log_stack.setStackingMode(QStackedLayout.StackingMode.StackAll)
 
-        self._scan_gif = QLabel()
+        self._scan_gif = _image_label()
         self._scan_gif.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._scan_gif.setScaledContents(False)
         gif_path = ABLETOOLS_DIR / "resources" / "scanners4-1920341542.gif"
@@ -773,7 +988,7 @@ class ScanView(QWidget):
         self._scan_gif.setGraphicsEffect(opacity)
         log_stack.addWidget(self._scan_gif)
 
-        self._matrix = QLabel()
+        self._matrix = _label("")
         self._matrix.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._matrix.setFont(QFont("Menlo", 10))
         self._matrix.setStyleSheet("color: #19f5c8;")
@@ -787,10 +1002,9 @@ class ScanView(QWidget):
         self._matrix_cols = 64
         log_stack.addWidget(self._matrix)
 
-        self.log = QPlainTextEdit()
+        self.log = _plain_text(QFont("Menlo", 11))
         self.log.setReadOnly(True)
         self.log.setStyleSheet("background-color: rgba(11, 20, 32, 0.72);")
-        self.log.setFont(QFont("Menlo", 11))
         self.log.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         log_stack.addWidget(self.log)
         layout.addWidget(log_container)
@@ -975,43 +1189,51 @@ class CatalogView(QWidget):
     def __init__(self, catalog: CatalogService) -> None:
         super().__init__()
         self.catalog = catalog
-        layout = QVBoxLayout(self)
-        layout.setSpacing(12)
+        self._build_ui()
+        self.refresh()
 
-        title_row = QHBoxLayout()
-        title = QLabel("Catalog")
-        title.setObjectName("SectionTitle")
+    def _build_ui(self) -> None:
+        layout = _vbox(self)
+        _panel_margins(layout)
+        self._build_title(layout)
+        self._build_controls(layout)
+        _section_gap(layout)
+        self._build_content(layout)
+        self._apply_control_sizes()
+
+    def _build_title(self, layout: QVBoxLayout) -> None:
+        title_row = _hbox()
+        title = _section_title("Catalog")
         title_row.addWidget(title)
         title_row.addStretch(1)
         layout.addLayout(title_row)
 
-        def _control_label(text: str) -> QLabel:
-            label = QLabel(text)
-            label.setObjectName("FieldLabel")
-            label.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-            label.setFixedHeight(36)
-            return label
+    def _control_label(self, text: str, buddy: QWidget | None = None) -> QLabel:
+        label = _label(text)
+        label.setObjectName("FieldLabel")
+        label.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+        label.setFixedHeight(36)
+        if buddy is not None:
+            label.setBuddy(buddy)
+        return label
 
+    def _build_controls(self, layout: QVBoxLayout) -> None:
         controls_bar = QWidget()
-        controls_row = QHBoxLayout(controls_bar)
+        controls_row = _hbox(controls_bar)
         controls_row.setContentsMargins(0, 4, 0, 4)
         controls_row.setSpacing(12)
         controls_row.setAlignment(Qt.AlignmentFlag.AlignVCenter)
 
-        filters_label = QLabel("Filters")
+        filters_label = _label("Filters", "FilterLabel")
         filters_label.setObjectName("FilterLabel")
         filters_label.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         filters_label.setFixedHeight(36)
         controls_row.addWidget(filters_label, 0, Qt.AlignmentFlag.AlignVCenter)
         controls_row.addSpacing(1)
-        self.missing_cb = QCheckBox("Missing refs")
-        self.missing_cb.setObjectName("CatalogFilterMissing")
-        self.devices_cb = QCheckBox("Has devices")
-        self.devices_cb.setObjectName("CatalogFilterDevices")
-        self.samples_cb = QCheckBox("Has samples")
-        self.samples_cb.setObjectName("CatalogFilterSamples")
-        self.backups_cb = QCheckBox("Show backups")
-        self.backups_cb.setObjectName("CatalogFilterBackups")
+        self.missing_cb = _checkbox("Missing refs", name="CatalogFilterMissing")
+        self.devices_cb = _checkbox("Has devices", name="CatalogFilterDevices")
+        self.samples_cb = _checkbox("Has samples", name="CatalogFilterSamples")
+        self.backups_cb = _checkbox("Show backups", name="CatalogFilterBackups")
         for cb in [self.missing_cb, self.devices_cb, self.samples_cb, self.backups_cb]:
             cb.stateChanged.connect(self.refresh)
             cb.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
@@ -1019,67 +1241,59 @@ class CatalogView(QWidget):
             controls_row.addWidget(cb, 0, Qt.AlignmentFlag.AlignVCenter)
         controls_row.addStretch(1)
 
-        self.scope_combo = QComboBox()
-        self.scope_combo.setObjectName("CatalogScope")
-        self.scope_combo.addItems(["live_recordings", "user_library", "preferences", "all"])
+        self.scope_combo = _combo(
+            ["live_recordings", "user_library", "preferences", "all"],
+            name="CatalogScope",
+        )
         self.scope_combo.currentTextChanged.connect(self.refresh)
-        _set_combo_width(self.scope_combo, padding=26)
+        _set_combo_width(self.scope_combo, padding=48)
 
-        self.search_edit = QLineEdit()
-        self.search_edit.setObjectName("CatalogSearch")
-        self.search_edit.setPlaceholderText("Search path or source")
+        self.search_edit = _line_edit(placeholder="Search path or source", name="CatalogSearch")
 
-        search_btn = QPushButton("Search")
-        search_btn.setObjectName("CatalogSearchBtn")
-        search_btn.setObjectName("Primary")
-        search_btn.clicked.connect(self.refresh)
-        reset_btn = QPushButton("Reset")
-        reset_btn.setObjectName("CatalogResetBtn")
-        reset_btn.clicked.connect(self._reset)
+        self.search_btn = _button("Search", primary=True)
+        self.search_btn.setObjectName("CatalogSearchBtn")
+        self.search_btn.clicked.connect(self.refresh)
+        self.reset_btn = _button("Reset")
+        self.reset_btn.setObjectName("CatalogResetBtn")
+        self.reset_btn.clicked.connect(self._reset)
 
-        scope_label = _control_label("Scope")
+        scope_label = self._control_label("Scope", buddy=self.scope_combo)
         scope_label.setObjectName("CatalogScopeLabel")
         controls_row.addWidget(scope_label, 0, Qt.AlignmentFlag.AlignVCenter)
         controls_row.addWidget(self.scope_combo, 0, Qt.AlignmentFlag.AlignVCenter)
-        search_label = _control_label("Search")
+        search_label = self._control_label("Search", buddy=self.search_edit)
         search_label.setObjectName("CatalogSearchLabel")
         controls_row.addWidget(search_label, 0, Qt.AlignmentFlag.AlignVCenter)
         controls_row.addWidget(self.search_edit, 0, Qt.AlignmentFlag.AlignVCenter)
-        controls_row.addWidget(search_btn, 0, Qt.AlignmentFlag.AlignVCenter)
-        controls_row.addWidget(reset_btn, 0, Qt.AlignmentFlag.AlignVCenter)
+        controls_row.addWidget(self.search_btn, 0, Qt.AlignmentFlag.AlignVCenter)
+        controls_row.addWidget(self.reset_btn, 0, Qt.AlignmentFlag.AlignVCenter)
         layout.addWidget(controls_bar)
 
-        content_row = QHBoxLayout()
-        content_row.setContentsMargins(0, 0, 0, 0)
-        content_row.setSpacing(12)
+    def _build_content(self, layout: QVBoxLayout) -> None:
+        content_row = _hbox()
 
-        summary_box = QGroupBox("Summary")
+        summary_box = _group("Summary")
         summary_box.setObjectName("SummaryBox")
-        summary_layout = QVBoxLayout(summary_box)
+        summary_layout = _vbox(summary_box)
         summary_layout.setContentsMargins(12, 12, 12, 12)
         summary_layout.setSpacing(8)
-        self.table = QTableWidget(0, 10)
-        self.table.setObjectName("SummaryTable")
-        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        self.table = _table(10, selection_mode=QTableWidget.SelectionMode.SingleSelection, name="SummaryTable")
         self.table.horizontalHeader().setSectionsClickable(True)
         self.table.horizontalHeader().setSortIndicatorShown(True)
         self.table.itemSelectionChanged.connect(self._update_detail)
         summary_layout.addWidget(self.table)
         content_row.addWidget(summary_box, 4)
 
-        detail_box = QGroupBox("Details")
+        detail_box = _group("Details")
         detail_box.setObjectName("DetailsBox")
         detail_box.setMinimumWidth(360)
         detail_box.setMaximumWidth(420)
         detail_box.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
-        detail_outer = QVBoxLayout(detail_box)
+        detail_outer = _vbox(detail_box)
         detail_outer.setContentsMargins(12, 12, 12, 12)
+        detail_outer.setSpacing(SPACE_PANEL)
 
-        detail_scroll = QScrollArea()
-        detail_scroll.setWidgetResizable(True)
-        detail_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        detail_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        detail_scroll = _scroll_area()
         detail_outer.addWidget(detail_scroll)
 
         detail_container = QWidget()
@@ -1103,43 +1317,38 @@ class CatalogView(QWidget):
             "Missing",
             "Targeted",
         ]:
-            label = QLabel("-")
+            label = _label("-")
             label.setWordWrap(True)
             label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
             self.detail_labels[key] = label
             detail_layout.addRow(key, label)
         detail_scroll.setWidget(detail_container)
 
-        action_bar = QWidget()
-        action_layout = QHBoxLayout(action_bar)
-        action_layout.setContentsMargins(0, 8, 0, 0)
-        action_layout.addStretch(1)
-        self.open_path_btn = QPushButton("Open in Finder")
+        self.open_path_btn = _button("Open in Finder")
         self.open_path_btn.clicked.connect(self._open_in_finder)
-        action_layout.addWidget(self.open_path_btn)
-        self.copy_path_btn = QPushButton("Copy Path")
+        self.copy_path_btn = _button("Copy Path")
         self.copy_path_btn.clicked.connect(self._copy_path)
-        action_layout.addWidget(self.copy_path_btn)
-        self.run_targeted_btn = QPushButton("Target Scan")
-        self.run_targeted_btn.setObjectName("Primary")
+        self.run_targeted_btn = _button("Target Scan", primary=True)
         self.run_targeted_btn.clicked.connect(self._run_targeted_for_selected)
-        action_layout.addWidget(self.run_targeted_btn)
-        action_layout.addStretch(1)
+        action_bar = _action_row(
+            self.open_path_btn,
+            self.copy_path_btn,
+            self.run_targeted_btn,
+            align="center",
+        )
         detail_outer.addWidget(action_bar)
+        detail_outer.addStretch(1)
         content_row.addWidget(detail_box, 2)
         layout.addLayout(content_row)
 
+    def _apply_control_sizes(self) -> None:
         self.search_edit.setFixedWidth(240)
         self.search_edit.setFixedHeight(22)
         self.scope_combo.setFixedHeight(22)
-        search_btn.setFixedHeight(24)
-        reset_btn.setFixedHeight(24)
+        self.search_btn.setFixedHeight(24)
+        self.reset_btn.setFixedHeight(24)
         self.scope_combo.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self.search_edit.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-        search_btn.setFixedHeight(32)
-        reset_btn.setFixedHeight(32)
-
-        self.refresh()
 
     def _reset(self) -> None:
         self.search_edit.setText("")
@@ -1323,54 +1532,57 @@ class PreferencesView(QWidget):
         self.catalog = catalog
         self.show_raw = False
         self.sources: list[tuple[str, str, int]] = []
-        layout = QVBoxLayout(self)
-        layout.setSpacing(12)
+        self._build_ui()
+        self.refresh()
 
-        header = QHBoxLayout()
-        title = QLabel("Preferences")
-        title.setObjectName("SectionTitle")
+    def _build_ui(self) -> None:
+        layout = _vbox(self)
+        _panel_margins(layout)
+
+        header = _hbox()
+        title = _section_title("Preferences")
         header.addWidget(title)
         header.addStretch(1)
-        self.show_raw_cb = QCheckBox("Show raw")
+        self.show_raw_cb = _checkbox("Show raw")
         self.show_raw_cb.stateChanged.connect(self.refresh)
         header.addWidget(self.show_raw_cb)
-        refresh_btn = QPushButton("Refresh")
-        refresh_btn.setObjectName("Primary")
+        refresh_btn = _button("Refresh", primary=True)
         refresh_btn.clicked.connect(self.refresh)
         header.addWidget(refresh_btn)
         layout.addLayout(header)
+        _section_gap(layout)
 
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        self.source_list = QListWidget()
+        splitter = _splitter(Qt.Orientation.Horizontal)
+        splitter.setHandleWidth(12)
+        self.source_list = _list()
         self.source_list.setMinimumWidth(320)
         self.source_list.currentRowChanged.connect(self._on_select)
         splitter.addWidget(self.source_list)
 
         right_widget = QWidget()
-        right = QVBoxLayout(right_widget)
-        detail_box = QGroupBox("Details")
+        right = _vbox(right_widget)
+        detail_box = _group("Details")
         detail_layout = QFormLayout(detail_box)
+        detail_layout.setContentsMargins(12, 12, 12, 12)
         detail_layout.setLabelAlignment(
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
         )
         self.detail_labels: dict[str, QLabel] = {}
         for key in ["Kind", "Source", "Modified", "Keys", "Lines", "Options", "Value keys"]:
-            label = QLabel("-")
+            label = _label("-")
             label.setWordWrap(True)
             label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
             self.detail_labels[key] = label
             detail_layout.addRow(key, label)
         right.addWidget(detail_box)
-        self.payload = QPlainTextEdit()
+        right.addSpacing(SPACE_PANEL)
+        self.payload = _plain_text(QFont("Menlo", 11))
         self.payload.setReadOnly(True)
-        self.payload.setFont(QFont("Menlo", 11))
         right.addWidget(self.payload, 3)
         splitter.addWidget(right_widget)
         splitter.setStretchFactor(0, 2)
         splitter.setStretchFactor(1, 5)
         layout.addWidget(splitter)
-
-        self.refresh()
 
     def refresh(self) -> None:
         self.sources = self.catalog.get_pref_sources()
@@ -1441,63 +1653,60 @@ class ToolsView(QWidget):
     def __init__(self) -> None:
         super().__init__()
         self._worker: Optional[RamifyWorker] = None
-        layout = QVBoxLayout(self)
-        layout.setSpacing(12)
+        self._build_ui()
+        self._log("Ready. Tip: start with Dry run.")
 
-        header = QHBoxLayout()
-        title = QLabel("Tools")
-        title.setObjectName("SectionTitle")
+    def _build_ui(self) -> None:
+        layout = _vbox(self)
+        _panel_margins(layout)
+
+        header = _hbox()
+        title = _section_title("Tools")
         header.addWidget(title)
         header.addStretch(1)
         layout.addLayout(header)
+        _section_gap(layout)
 
-        group = QGroupBox("RAMify Ableton Sets")
-        group_layout = QVBoxLayout(group)
-        group_layout.addWidget(QLabel("Flip AudioClip RAM flags for faster playback."))
+        group = _group("RAMify Ableton Sets")
+        group_layout = _vbox(group)
+        group_layout.setContentsMargins(12, 12, 12, 12)
+        group_layout.addWidget(_label("Flip AudioClip RAM flags for faster playback."))
 
-        target_row = QHBoxLayout()
-        self.path_edit = QLineEdit()
+        target_row = _hbox()
+        self.path_edit = _line_edit()
         target_row.addWidget(self.path_edit)
-        file_btn = QPushButton("Choose File")
+        file_btn = _button("Choose File")
         file_btn.clicked.connect(self._choose_file)
         target_row.addWidget(file_btn)
-        folder_btn = QPushButton("Choose Folder")
+        folder_btn = _button("Choose Folder")
         folder_btn.clicked.connect(self._choose_folder)
         target_row.addWidget(folder_btn)
         group_layout.addLayout(target_row)
 
-        options_row = QHBoxLayout()
-        self.dry_cb = QCheckBox("Dry run (no writes)")
+        self.dry_cb = _checkbox("Dry run (no writes)")
         self.dry_cb.setChecked(True)
-        self.inplace_cb = QCheckBox("In-place (create .bak)")
+        self.inplace_cb = _checkbox("In-place (create .bak)")
         self.inplace_cb.setChecked(True)
-        self.recursive_cb = QCheckBox("Recursive (if folder)")
-        options_row.addWidget(self.dry_cb)
-        options_row.addWidget(self.inplace_cb)
-        options_row.addWidget(self.recursive_cb)
-        options_row.addStretch(1)
-        group_layout.addLayout(options_row)
+        self.recursive_cb = _checkbox("Recursive (if folder)")
+        options_row = _checkbox_row(self.dry_cb, self.inplace_cb, self.recursive_cb)
+        group_layout.addWidget(options_row)
+        group_layout.addSpacing(SPACE_PANEL)
 
-        actions = QHBoxLayout()
-        self.run_btn = QPushButton("Run RAMify")
-        self.run_btn.setObjectName("Primary")
+        self.run_btn = _button("Run RAMify", primary=True)
         self.run_btn.clicked.connect(self._run)
-        actions.addWidget(self.run_btn)
-        clear_btn = QPushButton("Clear Log")
+        clear_btn = _button("Clear Log")
         clear_btn.clicked.connect(self._clear_log)
-        actions.addWidget(clear_btn)
-        actions.addStretch(1)
-        group_layout.addLayout(actions)
+        actions = _action_row(self.run_btn, clear_btn, align="left")
+        group_layout.addWidget(actions)
+        group_layout.addSpacing(SPACE_PANEL)
 
-        self.log = QPlainTextEdit()
+        self.log = _plain_text(QFont("Menlo", 11))
         self.log.setReadOnly(True)
-        self.log.setFont(QFont("Menlo", 11))
         self.log.setMinimumHeight(240)
         group_layout.addWidget(self.log)
 
         layout.addWidget(group)
         layout.addStretch(1)
-        self._log("Ready. Tip: start with Dry run.")
 
     def _log(self, message: str) -> None:
         self.log.appendPlainText(message)
@@ -1560,40 +1769,7 @@ class SettingsView(QWidget):
         super().__init__()
         self.catalog = catalog
         self._worker: Optional[CommandWorker] = None
-        layout = QVBoxLayout(self)
-        layout.setSpacing(12)
-
-        header = QHBoxLayout()
-        title = QLabel("Settings")
-        title.setObjectName("SectionTitle")
-        header.addWidget(title)
-        header.addStretch(1)
-        layout.addLayout(header)
-
-        group = QGroupBox("Maintenance")
-        group_layout = QHBoxLayout(group)
-        group_layout.setSpacing(12)
-        self.analytics_btn = QPushButton("Run Analytics")
-        self.analytics_btn.setObjectName("Primary")
-        self.analytics_btn.clicked.connect(self._run_analytics)
-        group_layout.addWidget(self.analytics_btn)
-        self.audit_btn = QPushButton("Audit Missing")
-        self.audit_btn.clicked.connect(self._audit_missing)
-        group_layout.addWidget(self.audit_btn)
-        self.audit_zero_btn = QPushButton("Audit Zero Tracks")
-        self.audit_zero_btn.clicked.connect(self._audit_zero_tracks)
-        group_layout.addWidget(self.audit_zero_btn)
-        self.optimize_btn = QPushButton("Optimize DB")
-        self.optimize_btn.clicked.connect(self._optimize_db)
-        group_layout.addWidget(self.optimize_btn)
-        group_layout.addStretch(1)
-        layout.addWidget(group)
-
-        self.output = QPlainTextEdit()
-        self.output.setReadOnly(True)
-        self.output.setFont(QFont("Menlo", 11))
-        layout.addWidget(self.output)
-        layout.addStretch(1)
+        self._build_ui()
 
     def _run_analytics(self) -> None:
         db_path = ABLETOOLS_DIR / ".abletools_catalog" / "abletools_catalog.sqlite"
@@ -1657,12 +1833,52 @@ class SettingsView(QWidget):
         self.audit_zero_btn.setEnabled(enabled)
         self.optimize_btn.setEnabled(enabled)
 
+    def _build_ui(self) -> None:
+        layout = _vbox(self)
+        _panel_margins(layout)
+
+        header = _hbox()
+        title = _section_title("Settings")
+        header.addWidget(title)
+        header.addStretch(1)
+        layout.addLayout(header)
+        _section_gap(layout)
+
+        group = _group("Maintenance")
+        group_layout = _vbox(group)
+        group_layout.setContentsMargins(12, 12, 12, 12)
+        button_row = QWidget()
+        button_layout = _hbox(button_row)
+        self.analytics_btn = _button("Run Analytics", primary=True)
+        self.analytics_btn.clicked.connect(self._run_analytics)
+        button_layout.addWidget(self.analytics_btn)
+        self.audit_btn = _button("Audit Missing")
+        self.audit_btn.clicked.connect(self._audit_missing)
+        button_layout.addWidget(self.audit_btn)
+        self.audit_zero_btn = _button("Audit Zero Tracks")
+        self.audit_zero_btn.clicked.connect(self._audit_zero_tracks)
+        button_layout.addWidget(self.audit_zero_btn)
+        self.optimize_btn = _button("Optimize DB")
+        self.optimize_btn.clicked.connect(self._optimize_db)
+        button_layout.addWidget(self.optimize_btn)
+        button_layout.addStretch(1)
+        group_layout.addStretch(1)
+        group_layout.addWidget(button_row)
+        group_layout.addStretch(1)
+        layout.addWidget(group)
+        _section_gap(layout)
+
+        self.output = _plain_text(QFont("Menlo", 11))
+        self.output.setReadOnly(True)
+        layout.addWidget(self.output)
+        layout.addStretch(1)
+
 
 class PlaceholderView(QWidget):
     def __init__(self, label: str) -> None:
         super().__init__()
-        layout = QVBoxLayout(self)
-        layout.addWidget(QLabel(label))
+        layout = _vbox(self)
+        layout.addWidget(_label(label))
         layout.addStretch(1)
 
 
@@ -1697,9 +1913,8 @@ class MainWindow(QMainWindow):
 
         root = QWidget()
         root.setObjectName("AppRoot")
-        root_layout = QVBoxLayout(root)
+        root_layout = _vbox(root)
         root_layout.setContentsMargins(12, 8, 12, 12)
-        root_layout.setSpacing(12)
         header = _header_bar()
         root_layout.addWidget(header)
 
@@ -1721,8 +1936,9 @@ class MainWindow(QMainWindow):
 
 
 def _boxed(title: str, widget: QWidget) -> QGroupBox:
-    box = QGroupBox(title)
-    layout = QVBoxLayout(box)
+    box = _group(title)
+    layout = _vbox(box)
+    layout.setContentsMargins(12, 12, 12, 12)
     layout.addWidget(widget)
     return box
 
@@ -1763,28 +1979,25 @@ def _dedupe_targeted(items: list[dict[str, str]]) -> list[dict[str, str]]:
 def _header_bar() -> QWidget:
     bar = QWidget()
     bar.setObjectName("HeaderBar")
-    layout = QHBoxLayout(bar)
+    layout = _hbox(bar)
     layout.setContentsMargins(18, 12, 18, 12)
-    layout.setSpacing(12)
     layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
 
     brand = QWidget()
-    brand_layout = QHBoxLayout(brand)
+    brand_layout = _hbox(brand)
     brand_layout.setContentsMargins(0, 0, 0, 0)
-    brand_layout.setSpacing(10)
     brand_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
 
     logo_path = ABLETOOLS_DIR / "resources" / "abletools_mark.svg"
     if logo_path.exists():
-        logo = QLabel()
+        logo = _image_label()
         logo.setObjectName("HeaderLogo")
         logo.setPixmap(_svg_pixmap(logo_path, 44))
         logo.setFixedSize(44, 44)
         logo.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         brand_layout.addWidget(logo)
 
-    title = QLabel("Abletools")
-    title.setObjectName("appTitle")
+    title = _label("Abletools", "appTitle")
     title.setAlignment(Qt.AlignmentFlag.AlignVCenter)
     title.setFixedHeight(44)
     brand_layout.addWidget(title)
@@ -1879,7 +2092,8 @@ def apply_theme(app: QApplication) -> None:
             background: #121b26;
             border: 2px solid #3a6f98;
             border-radius: 6px;
-            padding: 7px 12px;
+            padding: 6px 12px;
+            min-height: 28px;
         }
         QPushButton:hover {
             background: #1b2736;
@@ -1931,28 +2145,6 @@ def apply_theme(app: QApplication) -> None:
             padding: 2px 6px;
             margin-top: 0px;
         }
-        QLabel#FilterLabel,
-        QCheckBox#CatalogFilterMissing,
-        QCheckBox#CatalogFilterDevices,
-        QCheckBox#CatalogFilterSamples,
-        QCheckBox#CatalogFilterBackups {
-            padding-top: 0px;
-        }
-        QCheckBox {
-            padding-right: 2px;
-        }
-        QCheckBox::indicator {
-            width: 18px;
-            height: 18px;
-            margin-right: 4px;
-        }
-        QCheckBox::indicator:checked {
-            background: #19f5c8;
-            border-color: #19f5c8;
-        }
-        QCheckBox {
-            spacing: 4px;
-        }
         QPushButton#CatalogSearchBtn, QPushButton#CatalogResetBtn {
             padding: 4px 10px;
             min-height: 22px;
@@ -1966,14 +2158,20 @@ def apply_theme(app: QApplication) -> None:
             font-size: 11px;
             color: #9bb3c9;
         }
-        QLineEdit, QPlainTextEdit, QListWidget, QTableWidget {
+        QLineEdit {
+            background: #0f1826;
+            border: 2px solid #3a6f98;
+            border-radius: 6px;
+            padding: 2px 6px;
+        }
+        QPlainTextEdit, QListWidget, QTableWidget {
             background: #0f1826;
             border: 2px solid #3a6f98;
             border-radius: 6px;
             padding: 6px 8px;
         }
         QLineEdit, QComboBox {
-            min-height: 32px;
+            min-height: 22px;
             font-size: 12px;
         }
         QPlainTextEdit, QTableWidget, QListWidget {
@@ -1983,7 +2181,7 @@ def apply_theme(app: QApplication) -> None:
             background: #0f1826;
             border: 2px solid #3a6f98;
             border-radius: 6px;
-            padding: 4px 8px;
+            padding: 2px 6px;
         }
         QLineEdit:focus, QPlainTextEdit:focus, QComboBox:focus {
             border-color: #19f5c8;
@@ -2017,6 +2215,7 @@ def apply_theme(app: QApplication) -> None:
             border-radius: 4px;
             border: 2px solid #3a6f98;
             background: #0f1826;
+            margin-right: 6px;
         }
         QCheckBox::indicator:checked {
             background: #19f5c8;

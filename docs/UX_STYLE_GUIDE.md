@@ -19,9 +19,13 @@ Formal name: **Design System** (also called a **UI Style Guide** or **Component 
 - **Card radius:** 8px
 - **Field padding:** 6–8px
 - **Tab padding:** 12px 20px, min-height 36px
+- **Panel inset:** 12px content padding inside each tab view (top-level container).
 - **Panel gaps:** 12px minimum between bordered panels; never less than 10px.
 - **Grid gutters:** 12px between card rows/columns for dashboards and summary grids.
 - **Border spacing:** default 12px between adjacent bordered elements (cards, panels, subpanels).
+- **Row spacing:** default 12px between controls; use 8px for tight control rows.
+- **Group padding:** 12px internal padding for group boxes and card containers.
+- **Section gap:** 16px between major vertical sections (stacked panels/rows).
 
 ## Components (templates)
 
@@ -39,13 +43,15 @@ Formal name: **Design System** (also called a **UI Style Guide** or **Component 
 - **Primary:** neon fill (`#19f5c8`), dark text
 - **Secondary:** dark fill with bright border
 - **Hover:** brighten border and background slightly
+- **Spacing:** 12px between buttons in the same row.
 
 ### Inputs (LineEdit, ComboBox)
 - Dark fill, 2px border
 - Focus border becomes neon accent
-- Minimum height 28px (catalog scope/search uses thinner 22px height)
+- Default height 22px for all inputs (line edits + combos)
 - **Scope dropdown width:** fit to longest item + ~26px padding (match dashboard dropdown).
 - **Search width:** slightly wider than scope; default 240px in catalog.
+- **Button height alignment:** button heights should visually align to adjacent inputs in the same row.
 
 ### Cards / Panels (GroupBox)
 - 2px border, subtle background
@@ -70,6 +76,7 @@ Formal name: **Design System** (also called a **UI Style Guide** or **Component 
 - **Secondary actions**: grouped adjacent to primary
 - **Background activity**: status label + animated overlay (Scan)
 - **Advanced options**: hide behind a single toggle; keep the default view compact.
+- **Control rows**: align all labels, inputs, and buttons to a shared center line.
 
 ## Catalog tab tenets
 - **Single control row**: filters, scope, search, and actions share one vertical center line.
@@ -81,6 +88,11 @@ Formal name: **Design System** (also called a **UI Style Guide** or **Component 
 ## Design system rules of use
 - New UI elements must follow these tokens and spacing rules by default.
 - If a new pattern is required, update this guide alongside the code change.
+- All layouts should use shared helpers (`_vbox`, `_hbox`, `_grid`) to enforce spacing rules.
+- Each panel builds its UI in dedicated methods; avoid ad-hoc widget construction inline.
+- Widgets should be created via factory helpers (`_button`, `_label`, `_checkbox`, `_line_edit`, `_combo`, `_group`, `_checkbox_row`, `_action_row`).
+- Maintain the UI catalog (`docs/UI_CATALOG.md`) with new elements, layout objects, and style roles.
+- Use UI hierarchy levels: **Tab view (panel inset) → Groups → Rows/Grids → Controls**.
 
 ## Iconography
 - **Logo:** `resources/abletools_mark.svg`
