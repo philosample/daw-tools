@@ -888,8 +888,6 @@ class ScanView(QWidget):
         self._build_header(layout)
         self._build_root_row(layout)
         layout.addSpacing(SPACE_TIGHT)
-        self._build_scope_row(layout)
-        layout.addSpacing(SPACE_TIGHT)
         groups_row = _hbox()
         full_group = self._build_full_group()
         targeted_group = self._build_targeted_group()
@@ -924,23 +922,18 @@ class ScanView(QWidget):
         root_label.setBuddy(self.root_value)
         root_row.addWidget(root_label)
         root_row.addWidget(self.root_value)
-        root_row.addStretch(1)
         browse_btn = _button("Browse")
         browse_btn.clicked.connect(self._browse_root)
         root_row.addWidget(browse_btn)
-        layout.addLayout(root_row)
-
-    def _build_scope_row(self, layout: QVBoxLayout) -> None:
-        scope_row = _hbox()
-        scope_row.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+        root_row.addWidget(_hgap(SPACE_ROW))
         scope_label = _field_label("Scope:")
         self.scope_combo = _combo(["live_recordings", "user_library", "preferences", "all"])
         self.scope_combo.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         scope_label.setBuddy(self.scope_combo)
-        scope_row.addWidget(scope_label)
-        scope_row.addWidget(self.scope_combo)
-        scope_row.addStretch(1)
-        layout.addLayout(scope_row)
+        root_row.addWidget(scope_label)
+        root_row.addWidget(self.scope_combo)
+        root_row.addStretch(1)
+        layout.addLayout(root_row)
 
     def _build_full_group(self) -> QGroupBox:
         full_group, full_layout = _group_box("Full Scan", kind="grid")
@@ -1410,14 +1403,15 @@ class CatalogView(QWidget):
         self.copy_path_btn.clicked.connect(self._copy_path)
         self.run_targeted_btn = _button("Target Scan", primary=True)
         self.run_targeted_btn.clicked.connect(self._run_targeted_for_selected)
-        action_bar = _action_row(
+        action_bar = _boxed_row(
             self.open_path_btn,
             self.copy_path_btn,
             self.run_targeted_btn,
             align="center",
+            top=SPACE_TIGHT,
+            bottom=SPACE_TIGHT,
         )
         detail_outer.addWidget(action_bar)
-        detail_outer.addSpacing(SPACE_TIGHT)
         content_row.addWidget(detail_box, 2)
         layout.addLayout(content_row)
 
@@ -1761,7 +1755,7 @@ class ToolsView(QWidget):
         self.run_btn.clicked.connect(self._run)
         clear_btn = _button("Clear Log")
         clear_btn.clicked.connect(self._clear_log)
-        actions = _action_row(self.run_btn, clear_btn, align="left")
+        actions = _boxed_row(self.run_btn, clear_btn, align="left")
         group_layout.addWidget(actions)
         group_layout.addSpacing(SPACE_PANEL)
 

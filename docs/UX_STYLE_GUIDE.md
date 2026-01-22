@@ -99,6 +99,21 @@ Formal name: **Design System** (also called a **UI Style Guide** or **Component 
 - Maintain the UI catalog (`docs/UI_CATALOG.md`) with new elements, layout objects, and style roles.
 - Use UI hierarchy levels: **Tab view (panel inset) → Groups → Rows/Grids → Controls**.
 
+## UX principles checklist (visual audit)
+- **Fitts' Law:** primary actions are large, nearby, and easy to hit.
+- **Hick's Law:** reduce visible options per row; group with labels and toggles.
+- **Gestalt proximity + similarity:** related controls sit close and share styling.
+- **Visual hierarchy:** titles > section headings > labels > values.
+- **Alignment:** shared baselines in rows; labels aligned to their controls.
+- **Consistency:** identical controls share size, spacing, and placement.
+- **Feedback:** status labels and activity indicators are visible near actions.
+
+## UX audit categories
+- **Navigation:** tabs, headers, global actions.
+- **Inputs:** line edits, combos, checkboxes, toggles.
+- **Actions:** primary/secondary buttons, action rows, status indicators.
+- **Data views:** tables, lists, detail panes, summaries.
+- **Containers:** group boxes, cards, panels, spacing contracts.
 ## Iconography
 - **Logo:** `resources/abletools_mark.svg`
 - **App icon:** `resources/abletools_icon.png`
