@@ -21,11 +21,13 @@ It is the authoritative inventory used to enforce spacing/sizing rules and to dr
 - `_label(text, name=None)` → `QLabel`
 - `_field_label(text, buddy=None, name="FieldLabel")` → `QLabel` with buddy and vertical alignment.
 - `_section_title(text)` → `QLabel#SectionTitle`
+- `_value_label(text="-", name="ValueReadout")` → `QLabel` for read-only values.
 - `_button(text, primary=False, name=None)` → `QPushButton` fixed height (28), fixed size policy.
 - `_checkbox(text, checked=None, name=None)` → `QCheckBox`
 - `_line_edit(text=None, placeholder=None, name=None)` → `QLineEdit` fixed height (22).
 - `_combo(items, name=None)` → `QComboBox` fixed height (22).
 - `_group(title)` → `QGroupBox` (boxed panel).
+- `_group_box(title, kind=\"vbox|hbox|grid|form\")` → `QGroupBox` + layout with standard margins.
 - `_plain_text(font=None)` → `QPlainTextEdit`.
 - `_table(columns, headers=None, selection_mode=SingleSelection, select_rows=True, name=None)`
 - `_list(name=None)` → `QListWidget`
@@ -33,6 +35,8 @@ It is the authoritative inventory used to enforce spacing/sizing rules and to dr
 - `_splitter(orientation, name=None)` → `QSplitter` (children not collapsible).
 - `_checkbox_row(*boxes)` → `QWidget` with `QHBoxLayout` (center aligned, trailing stretch).
 - `_action_row(*widgets, align=\"left|center|right\")` → `QWidget` with `QHBoxLayout` and standard top/bottom padding.
+- `_action_status_row(*widgets, status=QLabel)` → `QWidget` with status label anchored right.
+- `_controls_bar(*items)` → `QWidget` with standard control-row margins and center alignment.
 
 ## Style roles (object names / QSS roles)
 - `SectionTitle`, `FilterLabel`, `FieldLabel`, `CatalogScopeLabel`, `CatalogSearchLabel`

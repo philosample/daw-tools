@@ -90,7 +90,7 @@ Formal name: **Design System** (also called a **UI Style Guide** or **Component 
 - If a new pattern is required, update this guide alongside the code change.
 - All layouts should use shared helpers (`_vbox`, `_hbox`, `_grid`) to enforce spacing rules.
 - Each panel builds its UI in dedicated methods; avoid ad-hoc widget construction inline.
-- Widgets should be created via factory helpers (`_button`, `_label`, `_checkbox`, `_line_edit`, `_combo`, `_group`, `_checkbox_row`, `_action_row`).
+- Widgets should be created via factory helpers (`_button`, `_label`, `_value_label`, `_checkbox`, `_line_edit`, `_combo`, `_group`, `_group_box`, `_checkbox_row`, `_action_row`, `_action_status_row`, `_controls_bar`).
 - Maintain the UI catalog (`docs/UI_CATALOG.md`) with new elements, layout objects, and style roles.
 - Use UI hierarchy levels: **Tab view (panel inset) → Groups → Rows/Grids → Controls**.
 
