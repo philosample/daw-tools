@@ -1,0 +1,29 @@
+{
+  "status": "completed",
+  "scope": "Outlier audit: checkbox overlap, missing filters, flow layout sizing",
+  "screenshots": [
+    "ux/screenshots/Screenshot 2026-01-22 at 6.05.17 PM.png",
+    "ux/screenshots/Screenshot 2026-01-22 at 6.04.53 PM.png",
+    "ux/screenshots/Screenshot 2026-01-22 at 6.04.33 PM.png"
+  ],
+  "tasks": [
+    {
+      "id": "flow-1",
+      "title": "Replace flow layout with grid",
+      "details": "Use checkbox grids for predictable row/column layout.",
+      "status": "done"
+    },
+    {
+      "id": "flow-2",
+      "title": "Ensure checkbox grids render",
+      "details": "Set checkbox grid containers to expanding width to avoid collapse.",
+      "status": "done"
+    },
+    {
+      "id": "filters-1",
+      "title": "Catalog filters visibility",
+      "details": "Ensure filters flow container expands within controls bar.",
+      "status": "done"
+    }
+  ]
+}

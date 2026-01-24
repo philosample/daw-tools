@@ -1,0 +1,36 @@
+{
+  "status": "completed",
+  "scope": "System UX fixes: unify spacing/sizing, remove per-screen overrides, add flow layout for checkbox groups",
+  "tasks": [
+    {
+      "id": "tokens-1",
+      "title": "Normalize sizing tokens",
+      "details": "Set control height to 24px, button height to 34px, add checkbox spacing token.",
+      "status": "done"
+    },
+    {
+      "id": "layout-1",
+      "title": "Remove per-screen fixed sizes",
+      "details": "Delete per-screen setFixedHeight overrides and rely on factory helpers.",
+      "status": "done"
+    },
+    {
+      "id": "layout-2",
+      "title": "Use row/column checkbox layout",
+      "details": "Use _checkbox_grid for multi-checkbox groups to avoid overlap.",
+      "status": "done"
+    },
+    {
+      "id": "qss-1",
+      "title": "Align QSS to tokens",
+      "details": "Update input/button min-heights and checkbox spacing to match tokens.",
+      "status": "done"
+    },
+    {
+      "id": "docs-1",
+      "title": "Document UX architecture rules",
+      "details": "Update UX style guide and UI catalog; add AGENTS instructions for Codex.",
+      "status": "done"
+    }
+  ]
+}

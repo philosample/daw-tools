@@ -24,8 +24,11 @@ Formal name: **Design System** (also called a **UI Style Guide** or **Component 
 - **Grid gutters:** 12px between card rows/columns for dashboards and summary grids.
 - **Border spacing:** default 12px between adjacent bordered elements (cards, panels, subpanels).
 - **Row spacing:** default 12px between controls; use 8px for tight control rows.
-- **Control row height:** use `FieldLabel` height (22px) for filters/scope/search labels and checkboxes.
-- **Buttons:** fixed height 32px; padding 3px 12px to avoid clipping.
+- **Checkbox groups:** grid spacing 12px; vertical spacing uses `CHECKBOX_VERTICAL_SPACING` (50% of horizontal); labels sit left of checkboxes with right‑aligned label column.
+- **Label → control gap:** fixed gap for all labels/controls (see `LABEL_WIDGET_GAP`).
+- Use `_checkbox_grid_labeled` for all checkbox groups; avoid flow layouts.
+- **Control row height:** derived from font metrics (base text height + 10px).
+- **Buttons:** derived from font metrics (base text height + 14px).
 - **Group padding:** 12px internal padding for group boxes and card containers.
 - **Section gap:** 16px between major vertical sections (stacked panels/rows).
 
@@ -53,7 +56,7 @@ Formal name: **Design System** (also called a **UI Style Guide** or **Component 
 ### Inputs (LineEdit, ComboBox)
 - Dark fill, 2px border
 - Focus border becomes neon accent
-- Default height 22px for all inputs (line edits + combos)
+- Default height derived from control row height (font metrics).
 - **Scope dropdown width:** fit to longest item + ~26px padding (match dashboard dropdown).
 - **Search width:** slightly wider than scope; default 240px in catalog.
 - **Button height alignment:** button heights should visually align to adjacent inputs in the same row.
@@ -81,11 +84,19 @@ Formal name: **Design System** (also called a **UI Style Guide** or **Component 
 - **Secondary actions**: grouped adjacent to primary
 - **Background activity**: status label + animated overlay (Scan)
 - **Advanced options**: hide behind a single toggle; keep the default view compact.
-- **Control rows**: align all labels, inputs, and buttons to a shared center line.
+- **Control rows**: align all labels and inputs to a shared center line.
+- **Action rows**: buttons live in their own row type; do not mix buttons with inputs.
+
+## UX architecture rules
+- **Row/column grammar:** everything is built from rows and columns. No ad-hoc spacing or one-off layout patterns.
+- **Hierarchy spacing:** only parent containers own margins; children use row spacing only.
+- **Single sizing system:** input height = control row height, button height = action row height.
+- **One spacing source:** internal control spacing is from layout tokens; QSS is only for visual styling.
+- **Label alignment:** checkbox labels are right‑aligned in a column to line up controls.
 
 ## Catalog tab tenets
 - **Single control row**: filters, scope, search, and actions share one vertical center line.
-- **Filters**: keep label and checkbox spacing tight; label sits close to first checkbox.
+- **Filters**: label sits close to the checkbox grid; checkbox labels align to a column.
 - **Control sizing**: scope/search fields stay compact to visually balance the row.
 - **Details actions**: bottom action buttons centered as a group for quick access.
 - **Card spacing**: keep stat cards and subpanels at least 12px apart; no border overlap.
@@ -95,7 +106,9 @@ Formal name: **Design System** (also called a **UI Style Guide** or **Component 
 - If a new pattern is required, update this guide alongside the code change.
 - All layouts should use shared helpers (`_vbox`, `_hbox`, `_grid`) to enforce spacing rules.
 - Each panel builds its UI in dedicated methods; avoid ad-hoc widget construction inline.
-- Widgets should be created via factory helpers (`_button`, `_label`, `_value_label`, `_checkbox`, `_line_edit`, `_combo`, `_group`, `_group_box`, `_checkbox_row`, `_action_row`, `_action_status_row`, `_controls_bar`, `_hgap`).
+- Widgets should be created via factory helpers (`_button`, `_label`, `_value_label`, `_checkbox`, `_line_edit`, `_combo`, `_group`, `_group_box`, `_checkbox_grid_labeled`, `_controls_bar`, `_controls_grid`, `_button_grid`, `_action_row`, `_action_status_row`, `_hgap`).
+- **No per-screen sizing:** avoid `setFixedHeight/Width` outside factory helpers.
+- **Checkbox groups:** use `_checkbox_grid_labeled` (rows/columns) for multi‑checkbox rows.
 - Maintain the UI catalog (`docs/UI_CATALOG.md`) with new elements, layout objects, and style roles.
 - Use UI hierarchy levels: **Tab view (panel inset) → Groups → Rows/Grids → Controls**.
 

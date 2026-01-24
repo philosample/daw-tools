@@ -1,0 +1,103 @@
+{
+  "status": "completed",
+  "scope": "Visual UX audit from latest screenshots provided in chat",
+  "screenshots": [
+    "ux/screenshots/2026-01-22_dashboard.png",
+    "ux/screenshots/2026-01-22_scan.png",
+    "ux/screenshots/2026-01-22_catalog.png",
+    "ux/screenshots/2026-01-22_insights.png",
+    "ux/screenshots/2026-01-22_tools.png",
+    "ux/screenshots/2026-01-22_preferences.png",
+    "ux/screenshots/2026-01-22_settings.png"
+  ],
+  "categories": [
+    "Navigation",
+    "Inputs",
+    "Actions",
+    "DataViews",
+    "Containers",
+    "Feedback"
+  ],
+  "items": [
+    {
+      "id": "nav-1",
+      "screen": "Global",
+      "category": "Navigation",
+      "issue": "Tab bar looks consistent, but selected tab indicator could use stronger contrast for quick scan.",
+      "action": "Evaluate increasing selected tab underline thickness or glow per style guide.",
+      "status": "done"
+    },
+    {
+      "id": "scan-1",
+      "screen": "Scan",
+      "category": "Inputs",
+      "issue": "Checkbox labels still feel slightly detached from indicators.",
+      "action": "Reduce QCheckBox spacing/margin further or align indicator + label via custom checkbox row widget.",
+      "status": "done"
+    },
+    {
+      "id": "scan-2",
+      "screen": "Scan",
+      "category": "Containers",
+      "issue": "Full/Targeted panels still feel sparse; whitespace could be tighter.",
+      "action": "Reduce internal group padding or add secondary rows to balance vertical rhythm.",
+      "status": "done"
+    },
+    {
+      "id": "dash-1",
+      "screen": "Dashboard",
+      "category": "Actions",
+      "issue": "Backups action row appears slightly off-center vertically in its box.",
+      "action": "Verify equal top/bottom inset in Backups group; adjust _boxed_row top/bottom if needed.",
+      "status": "done"
+    },
+    {
+      "id": "catalog-1",
+      "screen": "Catalog",
+      "category": "Actions",
+      "issue": "Details action buttons still look close to the bottom border.",
+      "action": "Increase bottom inset for details action row container.",
+      "status": "done"
+    },
+    {
+      "id": "catalog-2",
+      "screen": "Catalog",
+      "category": "Inputs",
+      "issue": "Filters row alignment can be tightened (label + checkboxes).",
+      "action": "Reduce filter label gap, ensure baseline alignment with scope/search controls.",
+      "status": "done"
+    },
+    {
+      "id": "insights-1",
+      "screen": "Insights",
+      "category": "DataViews",
+      "issue": "Dense text lacks section separators for quick scanning.",
+      "action": "Add subtle separators or section headers within the insights text view.",
+      "status": "done"
+    },
+    {
+      "id": "tools-1",
+      "screen": "Tools",
+      "category": "Actions",
+      "issue": "Run/Clear buttons sit close to the log border; may feel clipped.",
+      "action": "Increase vertical inset for the actions row container.",
+      "status": "done"
+    },
+    {
+      "id": "prefs-1",
+      "screen": "Preferences",
+      "category": "DataViews",
+      "issue": "Selected Summary could benefit from a stronger visual anchor (e.g., selection pill, key metadata bar).",
+      "action": "Add a small selection header bar with source name + modified time.",
+      "status": "done"
+    },
+    {
+      "id": "settings-1",
+      "screen": "Settings",
+      "category": "Actions",
+      "issue": "Maintenance actions could be visually separated from output panel.",
+      "action": "Add a subtle divider or reduce output panel height until needed.",
+      "status": "done"
+    }
+  ]
+}

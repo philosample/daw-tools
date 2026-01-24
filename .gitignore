@@ -17,6 +17,7 @@ venv/
 test.als
 resources/out.txt
 resources/ChatGPT Image Jan 18, 2026, 02_19_59 AM.png
+ux/screenshots/
 
 # Editor
 .vscode/*
