@@ -1,15 +1,41 @@
-# Abletools Codex Instructions
+# Project Codex Instructions
 
-These instructions apply to all future changes in this repo.
+## Authority
+These rules override global instructions.
 
-## UX system rules (must follow)
-- Use the UX design system defined in `docs/UX_STYLE_GUIDE.md`.
-- Use the UI inventory in `docs/UI_CATALOG.md` when adding or modifying widgets.
-- Build layouts only with row/column helpers (`_vbox`, `_hbox`, `_grid`, `FlowLayout`).
-- Do not add per-screen sizing overrides; only use factory helpers for sizes.
-- Use `_checkbox_flow` for multi-checkbox groups; avoid fixed row layouts that can overlap.
-- Keep margins at container boundaries only (group box margins + panel margins); no extra nested padding unless documented.
+## Prime directives
+- Minimal surface area changes.
+- Deterministic output.
+- No silent fallbacks. Fail loudly with clear errors.
+- No fallbacks or legacy shims; keep code clean and direct.
 
-## Documentation
-- When adding a new UI pattern or helper, update both `docs/UX_STYLE_GUIDE.md` and `docs/UI_CATALOG.md`.
-- Record UX audit tasks in `ux/tasklists/`.
+## Workflow
+- If asked to “patch” or “fix”, do so directly:
+  1) 1–3 lines: what changed + why
+
+## Quality gate
+- After any code change, run linting and auto-fixers for the modified files.
+- Default commands:
+  - `python -m ruff check --fix <changed_py_files>`
+  - `python -m pylint <changed_py_files>`
+- If a tool is unavailable or fails, stop and report the exact error; do not continue silently.
+
+## Repo hygiene
+- Preserve structure unless explicitly told to restructure.
+- Do not add new dependencies unless requested.
+- Do not rename files, paths, or public interfaces unless requested.
+
+## Logging / reporting
+- Prefer structured logs over print spam.
+- If you add logging, make it meaningful and easy to grep.
+
+## Packaging / installers
+- Prefer single entrypoint scripts.
+- Support non-interactive operation where possible.
+- Prefer idempotent install behavior.
+
+## Communication style
+- No tutorials.
+- No redundant restatement of the prompt.
+- No motivational text.
+- Do not dump full file contents unless explicitly requested.

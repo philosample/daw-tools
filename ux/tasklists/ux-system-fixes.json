@@ -17,7 +17,7 @@
     {
       "id": "layout-2",
       "title": "Use row/column checkbox layout",
-      "details": "Use _checkbox_grid for multi-checkbox groups to avoid overlap.",
+      "details": "Use _checkbox_flow (FlowLayout) for multi-checkbox groups to avoid overlap.",
       "status": "done"
     },
     {

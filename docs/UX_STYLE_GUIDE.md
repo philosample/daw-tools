@@ -26,7 +26,7 @@ Formal name: **Design System** (also called a **UI Style Guide** or **Component 
 - **Row spacing:** default 12px between controls; use 8px for tight control rows.
 - **Checkbox groups:** grid spacing 12px; vertical spacing uses `CHECKBOX_VERTICAL_SPACING` (50% of horizontal); labels sit left of checkboxes with right‑aligned label column.
 - **Label → control gap:** fixed gap for all labels/controls (see `LABEL_WIDGET_GAP`).
-- Use `_checkbox_grid_labeled` for all checkbox groups; avoid flow layouts.
+- Use `_checkbox_flow` for all checkbox groups so options wrap instead of overlapping.
 - **Control row height:** derived from font metrics (base text height + 10px).
 - **Buttons:** derived from font metrics (base text height + 14px).
 - **Group padding:** 12px internal padding for group boxes and card containers.
@@ -89,10 +89,15 @@ Formal name: **Design System** (also called a **UI Style Guide** or **Component 
 
 ## UX architecture rules
 - **Row/column grammar:** everything is built from rows and columns. No ad-hoc spacing or one-off layout patterns.
+- **Row ownership:** every widget must belong to a row (or grid cell) container; no floating widgets.
 - **Hierarchy spacing:** only parent containers own margins; children use row spacing only.
 - **Single sizing system:** input height = control row height, button height = action row height.
+- **Labeling:** every editable input has a visible label (not placeholder-only); labels sit above or to the left via `_field_label`.
 - **One spacing source:** internal control spacing is from layout tokens; QSS is only for visual styling.
 - **Label alignment:** checkbox labels are right‑aligned in a column to line up controls.
+- **Checkbox layout:** all checkbox groups use `_checkbox_flow`; no manual `_hbox` checkbox rows.
+- **Primary actions:** one primary per row; secondaries/tertiaries are visually subordinate.
+- **No per-screen sizing:** no `setFixedHeight/Width` calls outside factory helpers and explicit allowlists (e.g., header logo).
 
 ## Catalog tab tenets
 - **Single control row**: filters, scope, search, and actions share one vertical center line.
@@ -106,9 +111,9 @@ Formal name: **Design System** (also called a **UI Style Guide** or **Component 
 - If a new pattern is required, update this guide alongside the code change.
 - All layouts should use shared helpers (`_vbox`, `_hbox`, `_grid`) to enforce spacing rules.
 - Each panel builds its UI in dedicated methods; avoid ad-hoc widget construction inline.
-- Widgets should be created via factory helpers (`_button`, `_label`, `_value_label`, `_checkbox`, `_line_edit`, `_combo`, `_group`, `_group_box`, `_checkbox_grid_labeled`, `_controls_bar`, `_controls_grid`, `_button_grid`, `_action_row`, `_action_status_row`, `_hgap`).
+- Widgets should be created via factory helpers (`_button`, `_label`, `_value_label`, `_checkbox`, `_line_edit`, `_combo`, `_group`, `_group_box`, `_checkbox_flow`, `_controls_bar`, `_controls_grid`, `_button_grid`, `_action_row`, `_action_status_row`, `_hgap`).
 - **No per-screen sizing:** avoid `setFixedHeight/Width` outside factory helpers.
-- **Checkbox groups:** use `_checkbox_grid_labeled` (rows/columns) for multi‑checkbox rows.
+- **Checkbox groups:** use `_checkbox_flow` (FlowLayout) so controls wrap and stay aligned.
 - Maintain the UI catalog (`docs/UI_CATALOG.md`) with new elements, layout objects, and style roles.
 - Use UI hierarchy levels: **Tab view (panel inset) → Groups → Rows/Grids → Controls**.
 
@@ -138,3 +143,7 @@ Formal name: **Design System** (also called a **UI Style Guide** or **Component 
   - `Primary` for primary buttons
   - `HeaderBar`, `HeaderLogo`, `appTitle`, `SectionTitle`
 - Prefer consistent spacing and fixed minimum sizes for readability.
+- Enforced via `scripts/ui_lint.sh`:
+  - No stray `setFixedHeight/Width` outside helpers/allowlist.
+  - No raw `QCheckBox(...)` usage; use `_checkbox` + `_checkbox_flow`.
+  - Line edits must be paired with `_field_label` (label above/left) or part of a labeled `_controls_grid` tuple.

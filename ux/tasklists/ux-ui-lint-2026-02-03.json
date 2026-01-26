@@ -1,0 +1,11 @@
+{
+  "name": "UX lint enforcement",
+  "owner": "ux",
+  "status": "planned",
+  "items": [
+    "Document enforceable UX rules (labels required, no per-screen sizing, checkbox flow, spacing tokens)",
+    "Inventory factories and layouts in UI catalog with enforcement note",
+    "Add ui_lint.sh to block setFixedHeight/Width, raw QCheckBox, and unlabeled line edits",
+    "Run ui_lint.sh in CI for UI changes"
+  ]
+}

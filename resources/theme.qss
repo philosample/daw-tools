@@ -13,9 +13,12 @@ QWidget {
     border-bottom: 2px solid $BORDER;
     min-height: 64px;
 }
+QTabWidget {
+    background: $PANEL_BG;
+}
 QTabWidget::pane {
-    border: 2px solid $BORDER;
-    border-radius: 8px;
+    border: 1px solid $BORDER;
+    border-radius: 0px;
     background: $PANEL_BG;
 }
 QTabBar::tab {
@@ -24,7 +27,7 @@ QTabBar::tab {
     min-height: 36px;
     min-width: 92px;
     font-size: 13px;
-    border: 2px solid $BORDER;
+    border: 1px solid $BORDER;
     border-bottom: none;
     border-top-left-radius: 8px;
     border-top-right-radius: 8px;
@@ -33,16 +36,15 @@ QTabBar::tab {
 QTabBar::tab:selected {
     background: $TAB_SELECTED_BG;
     color: $PRIMARY_ACCENT;
-    border-bottom: 4px solid $PRIMARY_ACCENT;
+    border-bottom: 3px solid $PRIMARY_ACCENT;
     font-weight: 600;
 }
 QPushButton {
     background: $BUTTON_BG;
-    border: 2px solid $BORDER;
+    border: 1px solid $BORDER;
     border-radius: 6px;
-    padding: 0px 10px;
-    min-height: $CONTROL_HEIGHT;
-    max-height: $CONTROL_HEIGHT;
+    padding: 4px 12px;
+    min-height: $BUTTON_HEIGHT;
 }
 QPushButton:hover {
     background: $BUTTON_HOVER_BG;
@@ -57,10 +59,11 @@ QPushButton#Primary:hover {
     background: $PRIMARY_ACCENT_HOVER;
 }
 QGroupBox {
-    border: 2px solid $BORDER;
+    border: 1px solid $BORDER;
     border-radius: 8px;
     margin-top: 8px;
     background: $PANEL_BG;
+    padding: 8px;
 }
 QGroupBox::title {
     subcontrol-origin: margin;
@@ -101,14 +104,12 @@ QLabel#CatalogScopeLabel, QLabel#CatalogSearchLabel {
 }
 QComboBox#CatalogScope, QLineEdit#CatalogSearch {
     min-height: $CONTROL_HEIGHT;
-    max-height: $CONTROL_HEIGHT;
-    padding: 0px 6px;
+    padding: 2px 6px;
     margin-top: 0px;
 }
 QPushButton#CatalogSearchBtn, QPushButton#CatalogResetBtn {
-    padding: 0px 10px;
-    min-height: $CONTROL_HEIGHT;
-    max-height: $CONTROL_HEIGHT;
+    padding: 2px 10px;
+    min-height: $BUTTON_HEIGHT;
 }
 QLabel#StatValue {
     font-size: 20px;
@@ -132,7 +133,7 @@ QLineEdit {
     background: $INPUT_BG;
     border: 2px solid $BORDER;
     border-radius: 6px;
-    padding: 0px 6px;
+    padding: 2px 6px;
 }
 QPlainTextEdit, QListWidget, QTableWidget {
     background: $INPUT_BG;
@@ -142,8 +143,6 @@ QPlainTextEdit, QListWidget, QTableWidget {
 }
 QLineEdit, QComboBox {
     min-height: $CONTROL_HEIGHT;
-    max-height: $CONTROL_HEIGHT;
-    font-size: 12px;
 }
 QPlainTextEdit, QTableWidget, QListWidget {
     font-size: 12px;
@@ -152,7 +151,7 @@ QComboBox {
     background: $INPUT_BG;
     border: 2px solid $BORDER;
     border-radius: 6px;
-    padding: 0px 6px;
+    padding: 2px 6px;
 }
 QLineEdit:focus, QPlainTextEdit:focus, QComboBox:focus {
     border-color: $PRIMARY_ACCENT;
@@ -211,30 +210,43 @@ QScrollArea#UxLabScroll {
     background: transparent;
 }
 QScrollBar:vertical {
-    background: $BORDER;
+    background: transparent;
     width: 12px;
     margin: 2px 2px 2px 0;
 }
 QScrollBar::handle:vertical {
-    background: $BORDER;
+    background: transparent;
     border-radius: 5px;
     min-height: 24px;
 }
-QScrollBar::handle:vertical:hover {
-    background: $PRIMARY_ACCENT;
+QScrollBar::handle:vertical[scrolling="true"],
+QScrollBar::handle:vertical:hover,
+QScrollBar::handle:vertical:pressed,
+QScrollBar::handle:vertical:active {
+    background: rgba(25, 245, 200, 0.85);
 }
 QScrollBar:horizontal {
-    background: $BORDER;
+    background: transparent;
     height: 12px;
     margin: 0 2px 2px 2px;
 }
 QScrollBar::handle:horizontal {
-    background: $BORDER;
+    background: transparent;
     border-radius: 5px;
     min-width: 24px;
 }
-QScrollBar::handle:horizontal:hover {
-    background: $PRIMARY_ACCENT;
+QScrollBar::handle:horizontal[scrolling="true"],
+QScrollBar::handle:horizontal:hover,
+QScrollBar::handle:horizontal:pressed,
+QScrollBar::handle:horizontal:active {
+    background: rgba(25, 245, 200, 0.85);
+}
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical,
+QScrollBar::add-line:horizontal,
+QScrollBar::sub-line:horizontal {
+    width: 0px;
+    height: 0px;
 }
 QSplitter::handle {
     background: $BORDER;

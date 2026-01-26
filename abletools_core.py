@@ -122,16 +122,16 @@ class CatalogService:
                     "ORDER BY usage_count DESC LIMIT ?",
                     (limit,),
                 ).fetchall()
-            if rows:
+                if rows:
+                    return [f"{name} ({count})" for name, count in rows]
+                rows = conn.execute(
+                    "SELECT device_name, COUNT(*) FROM doc_device_hints "
+                    "WHERE scope != 'preferences' "
+                    "GROUP BY device_name "
+                    "ORDER BY COUNT(*) DESC LIMIT ?",
+                    (limit,),
+                ).fetchall()
                 return [f"{name} ({count})" for name, count in rows]
-            rows = conn.execute(
-                "SELECT device_name, COUNT(*) FROM doc_device_hints "
-                "WHERE scope != 'preferences' "
-                "GROUP BY device_name "
-                "ORDER BY COUNT(*) DESC LIMIT ?",
-                (limit,),
-            ).fetchall()
-            return [f"{name} ({count})" for name, count in rows]
         except Exception:
             return []
 

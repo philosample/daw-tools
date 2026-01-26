@@ -1,0 +1,58 @@
+{
+  "status": "completed",
+  "scope": "UX consistency audit for abletools_qt.py (control sizing, layout rules, alignment)",
+  "notes": "Audit focuses on rules from docs/UX_STYLE_GUIDE.md and docs/UI_CATALOG.md. Record outliers and prioritize fixes.",
+  "tasks": [
+    {
+      "id": "sizes-1",
+      "title": "Remove per-screen size overrides",
+      "details": "Audit and remove min/max/fixed widths or heights set outside factory helpers (e.g., root_value width, detail_box width, search_edit width, source_list width, data_list max width, top_* max heights, log min height). Replace with shared helpers or size policy.",
+      "priority": 1,
+      "status": "completed",
+      "references": [
+        "abletools_qt.py:921",
+        "abletools_qt.py:1226",
+        "abletools_qt.py:1227",
+        "abletools_qt.py:1688",
+        "abletools_qt.py:1689",
+        "abletools_qt.py:1749",
+        "abletools_qt.py:1946",
+        "abletools_qt.py:2119",
+        "abletools_qt.py:2489"
+      ]
+    },
+    {
+      "id": "layouts-1",
+      "title": "Replace QFormLayout with row/column helpers",
+      "details": "QFormLayout usage violates the row/column-only rule. Migrate detail forms to _grid/_hbox/_vbox helpers with aligned label columns.",
+      "priority": 2,
+      "status": "completed",
+      "references": [
+        "abletools_qt.py:1697",
+        "abletools_qt.py:1962",
+        "abletools_qt.py:2505"
+      ]
+    },
+    {
+      "id": "alignment-1",
+      "title": "Verify control-row alignment for mixed widgets",
+      "details": "Audit rows that mix labels/line edits/combos/buttons (e.g., Catalog filters row, UX Lab control variants) for baseline and border alignment once size overrides are removed.",
+      "priority": 3,
+      "status": "completed",
+      "references": [
+        "abletools_qt.py:1622",
+        "abletools_qt.py:2399"
+      ]
+    },
+    {
+      "id": "docs-1",
+      "title": "Update UI catalog to match row-based detail layouts",
+      "details": "Catalog and Preferences detail panes now use row-based vbox/hbox layouts instead of QFormLayout; update docs/UI_CATALOG.md to reflect the current layout inventory.",
+      "priority": 4,
+      "status": "completed",
+      "references": [
+        "docs/UI_CATALOG.md"
+      ]
+    }
+  ]
+}

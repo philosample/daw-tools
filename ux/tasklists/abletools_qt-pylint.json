@@ -1,0 +1,28 @@
+{
+  "status": "completed",
+  "scope": "Pylint/Pylance cleanup for abletools_qt.py",
+  "notes": "Pylint reported hundreds of shallow issues; focus on the most blocking diagnostics first and document follow-up work.",
+  "tasks": [
+    {
+      "id": "pylint-qt-imports",
+      "title": "Normalize PyQt6 imports and fallbacks",
+      "details": "Ensure QtCore/QtGui/QtWidgets symbols are defined even when the stub is incomplete so names like `QLineEdit`, `QTableWidget`, and `QThread` stop being reported as undefined.",
+      "priority": 1,
+      "status": "completed"
+    },
+    {
+      "id": "pylance-optional-access",
+      "title": "Guard optional members and layouts",
+      "details": "If an attribute can be None (scrollbars, header views, layout lookups), assert/poll before calling methods such as `setStretchLastSection` or `addWidget` so Pylance stops warning about optional member access.",
+      "priority": 2,
+      "status": "completed"
+    },
+    {
+      "id": "pylint-signature-mismatches",
+      "title": "Align overrides with Qt signatures",
+      "details": "Match the base class signatures for `addItem`, `setGeometry`, `paintEvent`, `eventFilter`, etc., to satisfy the overrides and avoid incompatible-method diagnostics.",
+      "priority": 3,
+      "status": "completed"
+    }
+  ]
+}

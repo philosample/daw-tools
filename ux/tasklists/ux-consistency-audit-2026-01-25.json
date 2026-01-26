@@ -1,0 +1,77 @@
+{
+  "status": "completed",
+  "scope": "Full UX consistency audit with emphasis on control-row alignment and border clipping",
+  "categories": [
+    "Inputs",
+    "Actions",
+    "Containers",
+    "Layout",
+    "Theming",
+    "Typography"
+  ],
+  "items": [
+    {
+      "id": "inputs-1",
+      "priority": "high",
+      "screen": "Catalog",
+      "category": "Inputs",
+      "issue": "Control row inputs/buttons show bottom-border clipping and vertical misalignment.",
+      "action": "Reconcile control row height tokens with QSS padding/borders and enforce consistent sizing in factories.",
+      "status": "done"
+    },
+    {
+      "id": "inputs-2",
+      "priority": "high",
+      "screen": "UX Lab",
+      "category": "Inputs",
+      "issue": "Control row variants show clipped bottom borders across inputs.",
+      "action": "Verify control row sizing in _controls_grid and container height constraints; adjust as needed.",
+      "status": "done"
+    },
+    {
+      "id": "layout-1",
+      "priority": "medium",
+      "screen": "Global",
+      "category": "Layout",
+      "issue": "Potential row-height mismatches between controls and buttons in mixed rows.",
+      "action": "Normalize button/control heights and alignments across _controls_bar/_controls_grid/_action_row.",
+      "status": "done"
+    },
+    {
+      "id": "theming-1",
+      "priority": "medium",
+      "screen": "Global",
+      "category": "Theming",
+      "issue": "Input/button padding may not match size tokens; QSS could override spacing inconsistently.",
+      "action": "Audit QSS padding/min-height roles and align with UX style guide tokens.",
+      "status": "done"
+    },
+    {
+      "id": "containers-1",
+      "priority": "medium",
+      "screen": "Catalog",
+      "category": "Containers",
+      "issue": "Control rows and filters may not share a consistent baseline alignment.",
+      "action": "Confirm filter label + checkbox grid alignment and adjust spacing tokens if needed.",
+      "status": "done"
+    },
+    {
+      "id": "actions-1",
+      "priority": "low",
+      "screen": "Catalog",
+      "category": "Actions",
+      "issue": "Details action buttons may sit tight to panel borders in some sizes.",
+      "action": "Verify _boxed_row in detail areas meets panel spacing rules.",
+      "status": "done"
+    },
+    {
+      "id": "layout-2",
+      "priority": "low",
+      "screen": "Global",
+      "category": "Layout",
+      "issue": "Check for any per-screen size overrides outside factories.",
+      "action": "Audit for setFixedHeight/Width outside factories and move to tokens if required.",
+      "status": "done"
+    }
+  ]
+}

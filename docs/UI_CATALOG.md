@@ -2,6 +2,7 @@
 
 This catalog enumerates every UI object (widgets + layouts + style roles) used in the Qt UI.
 It is the authoritative inventory used to enforce spacing/sizing rules and to drive future UI changes.
+Enforcement is automated by `scripts/ui_lint.sh` (see UX style guide).
 
 ## Global theme
 - `resources/theme.qss` with token substitution in `apply_theme()` (source of UI colors + base styling).
@@ -13,10 +14,8 @@ It is the authoritative inventory used to enforce spacing/sizing rules and to dr
 - `QGridLayout`
   - Default spacing: `SPACE_PANEL` (12) for both axes.
   - Used for stat cards, summary grids, and checkbox clusters when needed.
-- `QGridLayout`
-  - Checkbox groups use fixed columns to avoid overlap.
-- `QFormLayout`
-  - Used for detail panes. Labels right-aligned, fields expand.
+- `FlowLayout`
+  - Used via `_checkbox_flow` to wrap checkbox groups without overlap.
 - `QSplitter`
   - Used in Preferences for left/right split; handle width styled.
 - `QScrollArea`
@@ -27,18 +26,18 @@ It is the authoritative inventory used to enforce spacing/sizing rules and to dr
 - `_field_label(text, buddy=None, name="FieldLabel")` → `QLabel` with buddy and vertical alignment.
 - `_section_title(text)` → `QLabel#SectionTitle`
 - `_value_label(text="-", name="ValueReadout")` → `QLabel` for read-only values.
-- `_button(text, primary=False, name=None)` → `QPushButton` fixed height (font metrics + 14px).
-- `_checkbox(text, checked=None, name=None)` → `QCheckBox`
-- `_line_edit(text=None, placeholder=None, name=None)` → `QLineEdit` fixed height (control row height).
-- `_combo(items, name=None)` → `QComboBox` fixed height (control row height).
+- `_button(text, primary=False, name=None)` → `QPushButton` minimum height (font metrics + 14px).
+- `_checkbox(text, checked=None, name=None)` → `QCheckBox` minimum height (control row height).
+- `_line_edit(text=None, placeholder=None, name=None)` → `QLineEdit` minimum height (control row height).
+- `_combo(items, name=None)` → `QComboBox` minimum height (control row height).
 - `_group(title)` → `QGroupBox` (boxed panel).
-- `_group_box(title, kind=\"vbox|hbox|grid|form\")` → `QGroupBox` + layout with standard margins.
+- `_group_box(title, kind=\"vbox|hbox|grid\")` → `QGroupBox` + layout with standard margins.
 - `_plain_text(font=None)` → `QPlainTextEdit`.
 - `_table(columns, headers=None, selection_mode=SingleSelection, select_rows=True, name=None)`
 - `_list(name=None)` → `QListWidget`
 - `_scroll_area(name=None)` → `QScrollArea` (no frame, no horizontal scroll).
 - `_splitter(orientation, name=None)` → `QSplitter` (children not collapsible).
-- `_checkbox_grid_labeled(items, columns)` → `QWidget` with `QGridLayout` for checkbox groups; label left, checkbox right.
+- `_checkbox_flow(items)` → `QWidget` with `FlowLayout` for checkbox groups; label left, checkbox right, options wrap based on available width.
 - `_action_row(*widgets, align=\"left|center|right\")` → `QWidget` with `QHBoxLayout` and standard top/bottom padding.
 - `_action_status_row(*widgets, status=QLabel)` → `QWidget` with status label anchored right.
 - `_controls_bar(*items)` → `QWidget` with standard control-row margins and center alignment.
@@ -91,14 +90,14 @@ It is the authoritative inventory used to enforce spacing/sizing rules and to dr
       {"name": "browse_btn", "type": "QPushButton", "factory": "_button"},
       {"name": "scope_label", "type": "QLabel", "factory": "_field_label", "buddy": "scope_combo"},
       {"name": "scope_combo", "type": "QComboBox", "factory": "_combo", "rules": ["height=control_row"]},
-      {"name": "full_scan_cbs", "type": "QCheckBox[]", "factory": "_checkbox", "rules": ["layout=_checkbox_grid_labeled(columns=4)"]},
+      {"name": "full_scan_cbs", "type": "QCheckBox[]", "factory": "_checkbox", "rules": ["layout=_checkbox_flow"]},
       {"name": "full_advanced_toggle", "type": "QCheckBox", "factory": "_checkbox"},
-      {"name": "full_advanced_cbs", "type": "QCheckBox[]", "factory": "_checkbox", "rules": ["layout=_checkbox_grid_labeled(columns=3)"]},
+      {"name": "full_advanced_cbs", "type": "QCheckBox[]", "factory": "_checkbox", "rules": ["layout=_checkbox_flow"]},
       {"name": "targeted_select_btn", "type": "QPushButton", "factory": "_button"},
       {"name": "targeted_summary", "type": "QLabel", "factory": "_label"},
-      {"name": "targeted_cbs", "type": "QCheckBox[]", "factory": "_checkbox", "rules": ["layout=_checkbox_grid_labeled(columns=3)"]},
+      {"name": "targeted_cbs", "type": "QCheckBox[]", "factory": "_checkbox", "rules": ["layout=_checkbox_flow"]},
       {"name": "targeted_advanced_toggle", "type": "QCheckBox", "factory": "_checkbox"},
-      {"name": "targeted_advanced_cbs", "type": "QCheckBox[]", "factory": "_checkbox", "rules": ["layout=_checkbox_grid_labeled(columns=1)"]},
+      {"name": "targeted_advanced_cbs", "type": "QCheckBox[]", "factory": "_checkbox", "rules": ["layout=_checkbox_flow"]},
       {"name": "action_buttons", "type": "QPushButton[]", "factory": "_button"},
       {"name": "status_label", "type": "QLabel", "factory": "_label"},
       {"name": "log_text", "type": "QPlainTextEdit", "factory": "_plain_text"},
@@ -107,11 +106,11 @@ It is the authoritative inventory used to enforce spacing/sizing rules and to dr
     ]
   },
   "Catalog": {
-    "layout": ["QVBoxLayout(panel)", "QHBoxLayout(title)", "QHBoxLayout(controls)", "QHBoxLayout(content)", "QFormLayout(details)"] ,
+    "layout": ["QVBoxLayout(panel)", "QHBoxLayout(title)", "QHBoxLayout(controls)", "QHBoxLayout(content)", "QVBoxLayout(detail_rows)"] ,
     "widgets": [
       {"name": "title", "type": "QLabel", "factory": "_section_title"},
       {"name": "filters_label", "type": "QLabel", "factory": "_label", "style_role": "FilterLabel"},
-      {"name": "filter_cbs", "type": "QCheckBox[]", "factory": "_checkbox", "rules": ["layout=_checkbox_grid_labeled(columns=2)"]},
+      {"name": "filter_cbs", "type": "QCheckBox[]", "factory": "_checkbox", "rules": ["layout=_checkbox_flow"]},
       {"name": "scope_label", "type": "QLabel", "factory": "_field_label", "buddy": "scope_combo"},
       {"name": "scope_combo", "type": "QComboBox", "factory": "_combo", "rules": ["height=control_row", "width=_set_combo_width"]},
       {"name": "search_label", "type": "QLabel", "factory": "_field_label", "buddy": "search_edit"},
@@ -138,15 +137,15 @@ It is the authoritative inventory used to enforce spacing/sizing rules and to dr
     "widgets": [
       {"name": "path_edit", "type": "QLineEdit", "factory": "_line_edit"},
       {"name": "choose_buttons", "type": "QPushButton[]", "factory": "_button"},
-      {"name": "options_cbs", "type": "QCheckBox[]", "factory": "_checkbox", "rules": ["layout=_checkbox_grid_labeled(columns=1)"]},
+      {"name": "options_cbs", "type": "QCheckBox[]", "factory": "_checkbox", "rules": ["layout=_checkbox_flow"]},
       {"name": "action_buttons", "type": "QPushButton[]", "factory": "_button"},
       {"name": "log_text", "type": "QPlainTextEdit", "factory": "_plain_text"}
     ]
   },
   "Preferences": {
-    "layout": ["QVBoxLayout(panel)", "QHBoxLayout(header)", "QSplitter(left_right)", "QGroupBox(details)", "QFormLayout(details)"] ,
+    "layout": ["QVBoxLayout(panel)", "QHBoxLayout(header)", "QSplitter(left_right)", "QGroupBox(details)", "QVBoxLayout(detail_rows)"] ,
     "widgets": [
-      {"name": "show_raw", "type": "QCheckBox", "factory": "_checkbox", "rules": ["layout=_checkbox_grid_labeled(columns=1)"]},
+      {"name": "show_raw", "type": "QCheckBox", "factory": "_checkbox", "rules": ["layout=_checkbox_flow"]},
       {"name": "refresh_btn", "type": "QPushButton", "factory": "_button"},
       {"name": "splitter", "type": "QSplitter", "factory": "_splitter"},
       {"name": "source_list", "type": "QListWidget", "factory": "_list"},
@@ -167,7 +166,7 @@ It is the authoritative inventory used to enforce spacing/sizing rules and to dr
       "widgets": [
         {"name": "search_label", "type": "QLabel", "factory": "_field_label", "buddy": "search_edit"},
         {"name": "search_edit", "type": "QLineEdit", "factory": "_line_edit"},
-        {"name": "ignore_backups", "type": "QCheckBox", "factory": "_checkbox", "rules": ["layout=_checkbox_grid_labeled(columns=1)"]},
+        {"name": "ignore_backups", "type": "QCheckBox", "factory": "_checkbox", "rules": ["layout=_checkbox_flow"]},
         {"name": "table", "type": "QTableWidget", "factory": "_table", "rules": ["selection=ExtendedSelection"]},
         {"name": "apply/cancel", "type": "QPushButton[]", "factory": "_button"}
       ]
@@ -175,8 +174,8 @@ It is the authoritative inventory used to enforce spacing/sizing rules and to dr
     "CleanCatalogDialog": {
       "layout": ["QVBoxLayout(dialog)", "QHBoxLayout(footer)"] ,
       "widgets": [
-        {"name": "options_cbs", "type": "QCheckBox[]", "factory": "_checkbox", "rules": ["layout=_checkbox_grid_labeled(columns=1)"]},
-        {"name": "optimize/rebuild", "type": "QCheckBox[]", "factory": "_checkbox", "rules": ["layout=_checkbox_grid_labeled(columns=1)"]},
+        {"name": "options_cbs", "type": "QCheckBox[]", "factory": "_checkbox", "rules": ["layout=_checkbox_flow"]},
+        {"name": "optimize/rebuild", "type": "QCheckBox[]", "factory": "_checkbox", "rules": ["layout=_checkbox_flow"]},
         {"name": "action_buttons", "type": "QPushButton[]", "factory": "_button"}
       ]
     }

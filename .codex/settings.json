@@ -1,0 +1,7 @@
+{
+  "style": {
+    "verbosity": "low",
+    "prefer_full_files": true,
+    "prefer_minimal_diffs": true
+  }
+}
